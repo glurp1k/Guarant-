@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+"""Самопроверка сборки: python scripts/selfcheck.py
+
+Гоняет основные денежные сценарии на временной базе, не обращаясь
+ни к Telegram, ни к блокчейну. Полезно после правок и перед деплоем.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import sys
+import tempfile
+from decimal import Decimal
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+TMP_DB = Path(tempfile.gettempdir()) / "guarant_selfcheck.db"
+TMP_DB.unlink(missing_ok=True)
+
+os.environ.setdefault("BOT_TOKEN", "123456789:SELFCHECK")
+os.environ.setdefault("ADMIN_IDS", "1")
+os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{TMP_DB}"
+
+from bot.db import close_db, init_db, session_scope  # noqa: E402
+from bot.db.models import Account, CommissionPayer, DealRole, PayMethod, TxKind  # noqa: E402
+from bot.handlers import build_router  # noqa: E402
+from bot.keyboards import callbacks as cb  # noqa: E402
+from bot.services import deals, deposits, ledger, payments, users, withdrawals  # noqa: E402
+from bot.services.settings import DEFINITIONS, settings  # noqa: E402
+from bot.utils.money import parse_amount, q2  # noqa: E402
+from bot.utils.texts import normalize_username  # noqa: E402
+
+checks: list[str] = []
+
+
+def ok(title: str) -> None:
+    checks.append(title)
+    print(f"  ✓ {title}")
+
+
+def check_callbacks() -> None:
+    """Каждая кнопка должна пережить pack/unpack.
+
+    Пустые сегменты aiogram превращает в None — необязательные строковые
+    поля обязаны это допускать, иначе кнопка молча перестанет работать.
+    """
+    samples = [
+        cb.MenuCB(action="main"),
+        cb.DepositCB(action="menu"),
+        cb.TopupCB(action="choose", purpose="deposit"),
+        cb.TopupCB(action="method", method="trc20", purpose="balance"),
+        cb.TopupCB(action="check", invoice_id=7),
+        cb.WithdrawCB(action="menu", source="deposit"),
+        cb.WithdrawCB(action="confirm", method="cryptobot", source="balance"),
+        cb.DealCB(action="list"),
+        cb.DealCB(action="role", value="seller"),
+        cb.DealCB(action="view", deal_id=12),
+        cb.AdminCB(action="stats"),
+        cb.AdminItemCB(action="wd_paid", item_id=3),
+        cb.SettingCB(action="categories"),
+        cb.SettingCB(action="list", category="withdraw"),
+        cb.SettingCB(action="set", category="deals", key="deal_commission_payer", value="split"),
+    ]
+    for sample in samples:
+        restored = type(sample).unpack(sample.pack())
+        assert restored.action == sample.action, sample.pack()
+    ok(f"callback-данные ({len(samples)} шт.) распаковываются")
+
+
+def check_utils() -> None:
+    assert parse_amount("10,5") == Decimal("10.50")
+    assert parse_amount("-3") is None
+    assert parse_amount("абв") is None
+    assert normalize_username("https://t.me/Some_User") == "some_user"
+    assert normalize_username("@ok_user") == "ok_user"
+    assert normalize_username("@ab") is None
+    ok("разбор сумм и юзернеймов")
+
+
+async def check_money() -> None:
+    async with session_scope() as s:
+        await settings.load(s)
+        await settings.set(s, "usdt_trc20_address", "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+        await settings.set(s, "topup_cryptobot_enabled", "0")
+
+        seller = await users.get_or_create(s, 9001, "sc_seller", "Продавец")
+        buyer = await users.get_or_create(s, 9002, "sc_buyer", "Покупатель")
+
+        invoice = await payments.create_invoice(s, buyer, Decimal("100"), PayMethod.TRC20, Account.BALANCE)
+        assert Decimal("100") < invoice.pay_amount < Decimal("101")
+        credited = await payments.mark_paid(s, invoice, invoice.pay_amount, tx_hash="tx-1")
+        assert buyer.balance == credited
+        assert await payments.mark_paid(s, invoice, invoice.pay_amount, "tx-1") == Decimal("0")
+        ok("пополнение зачисляется один раз")
+
+        deal = await deals.create(s, seller, Decimal("50"), "Тест", DealRole.SELLER, CommissionPayer.SELLER)
+        assert q2(deal.commission) == Decimal("1.50")
+        await deals.join(s, deal, buyer)
+        before = buyer.balance
+        await deals.fund(s, deal, buyer)
+        assert buyer.balance == before - Decimal("50")
+        await deals.complete(s, deal)
+        assert seller.balance == Decimal("48.50")
+        assert seller.deals_done == 1 and buyer.deals_done == 1
+        ok("сделка: удержание, комиссия, выплата")
+
+        deal2 = await deals.create(s, seller, Decimal("20"), "Возврат", DealRole.SELLER, CommissionPayer.BUYER)
+        await deals.join(s, deal2, buyer)
+        balance_before = buyer.balance
+        await deals.fund(s, deal2, buyer)
+        await deals.refund(s, deal2)
+        assert buyer.balance == balance_before, (buyer.balance, balance_before)
+        ok("возврат по спору возвращает всю сумму покупателю")
+
+        await deposits.top_up_from_balance(s, seller, Decimal("40"))
+        assert seller.deposit == Decimal("40")
+        back = await deposits.move_to_balance(s, seller, Decimal("10"))
+        assert seller.deposit == Decimal("30") and back == Decimal("10")
+        card = deposits.build_card(seller)
+        assert "30.00" in card
+        ok("депозит: пополнение с баланса, снятие, карточка проверки")
+
+        fee = withdrawals.calc_fee(Decimal("20"), PayMethod.TRC20, Account.BALANCE)
+        assert fee == Decimal("1.40"), fee
+        await ledger.credit(s, seller, Decimal("100"), TxKind.TOPUP)
+        await s.commit()
+        held = seller.balance
+        request = await withdrawals.create_request(
+            s, seller, Decimal("20"), PayMethod.TRC20, "T" + "x" * 33, Account.BALANCE
+        )
+        assert seller.balance == held - Decimal("20")
+        await withdrawals.reject(s, request, admin_id=1, comment="проверка")
+        assert seller.balance == held
+        ok("вывод: списание при заявке и возврат при отказе")
+
+        try:
+            await ledger.debit(s, buyer, buyer.balance + Decimal("1"), TxKind.WITHDRAW)
+            raise AssertionError("списание в минус должно падать")
+        except ledger.InsufficientFunds:
+            await s.rollback()
+        ok("баланс нельзя увести в минус")
+
+        found = await users.find_by_username(s, "SC_SELLER")
+        assert found is not None and found.tg_id == 9001
+        ok("поиск пользователя по юзернейму без учёта регистра")
+
+
+async def main() -> int:
+    await init_db()
+
+    print("Самопроверка гарант-бота\n")
+    check_callbacks()
+    check_utils()
+    await check_money()
+
+    router = build_router()
+    assert router.sub_routers, "роутеры не собрались"
+    ok(f"роутеры собираются ({len(router.sub_routers)} шт.)")
+
+    assert len({d.key for d in DEFINITIONS}) == len(DEFINITIONS), "дублирующиеся ключи настроек"
+    ok(f"реестр настроек без дублей ({len(DEFINITIONS)} параметров)")
+
+    await close_db()
+    TMP_DB.unlink(missing_ok=True)
+
+    print(f"\n✅ Всё в порядке: {len(checks)} проверок пройдено")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(asyncio.run(main()))
