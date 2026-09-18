@@ -357,6 +357,10 @@ async def complete_deal(call: CallbackQuery, callback_data: DealCB, session: Asy
         f"На баланс зачислено: <b>{fmt(deal.seller_payout)}</b>",
     )
 
+    from bot.handlers.reviews import offer_both
+
+    await offer_both(call.bot, deal)
+
 
 @router.callback_query(DealCB.filter(F.action == "cancel"))
 async def cancel_deal(call: CallbackQuery, callback_data: DealCB, session: AsyncSession, user: User) -> None:

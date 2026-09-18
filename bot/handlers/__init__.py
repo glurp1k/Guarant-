@@ -9,7 +9,7 @@ from __future__ import annotations
 from aiogram import Router
 
 from bot.handlers import (check, common, deals, deposit, fallback, reply_menu,
-                          topup, withdraw)
+                          reviews, topup, withdraw)
 from bot.handlers.admin import router as admin_router
 
 
@@ -25,5 +25,6 @@ def build_router() -> Router:
     router.include_router(withdraw.router)
     router.include_router(check.router)
     router.include_router(deals.router)
+    router.include_router(reviews.router)
     router.include_router(fallback.router)
     return router

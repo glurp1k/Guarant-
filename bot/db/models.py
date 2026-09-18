@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import (BigInteger, Boolean, DateTime, ForeignKey, Index, Integer,
+                        String, Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from bot.db.base import Base
@@ -105,6 +106,11 @@ class User(Base):
     deals_done: Mapped[int] = mapped_column(Integer, default=0)
     deals_volume: Mapped[Decimal] = mapped_column(Money, default=ZERO)
 
+    # Счётчики отзывов держим рядом с пользователем: их показывают в профиле
+    # и в карточке проверки, считать их запросом на каждый показ незачем.
+    reviews_plus: Mapped[int] = mapped_column(Integer, default=0)
+    reviews_minus: Mapped[int] = mapped_column(Integer, default=0)
+
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
     ban_reason: Mapped[str | None] = mapped_column(String(255))
@@ -112,6 +118,11 @@ class User(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    @property
+    def reputation(self) -> str:
+        """«3 / 0» — плюсы и минусы."""
+        return f"{self.reviews_plus} / {self.reviews_minus}"
 
     @property
     def mention(self) -> str:
@@ -262,3 +273,29 @@ class Transaction(Base):
     ref_id: Mapped[int | None] = mapped_column(Integer)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+class Review(Base):
+    """Отзыв о второй стороне после закрытой сделки.
+
+    Один отзыв на сделку от каждой стороны — это держит уникальный индекс,
+    а не только проверка в коде.
+    """
+
+    __tablename__ = "reviews"
+    __table_args__ = (UniqueConstraint("deal_id", "author_id", name="uq_review_once_per_deal"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    deal_id: Mapped[int] = mapped_column(Integer, ForeignKey("deals.id"), index=True)
+    author_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.tg_id"), index=True)
+    target_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.tg_id"), index=True)
+
+    rating: Mapped[int] = mapped_column(Integer)  # +1 или -1
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    author: Mapped[User] = relationship(foreign_keys=[author_id], lazy="selectin")
+
+    @property
+    def is_positive(self) -> bool:
+        return self.rating > 0

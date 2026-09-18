@@ -60,6 +60,7 @@ def profile_text(user: User, stats: deals_service.DealStats) -> str:
         ]),
         section(icon("icon_reputation"), "Репутация", [
             ("Депозит", bold(fmt(user.deposit))) if settings.get_bool("deposit_enabled") else ("", ""),
+            ("Отзывы (+ / −)", bold(user.reputation)) if settings.get_bool("reviews_show_in_profile") else ("", ""),
             ("Статус", bold(deposits.trust_label(user))),
             ("Дата регистрации", bold(fmt_date(user.created_at, with_time=False))),
         ]),

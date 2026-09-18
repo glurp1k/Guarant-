@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.db.models import Account, Deal, DealStatus, TxKind, User
 from bot.services import ledger
 from bot.services.settings import settings
-from bot.utils.money import ZERO, floor2, q2
+from bot.utils.money import ZERO, floor2, fmt, q2
 from bot.utils.style import block, mono, note, title, tree
 from bot.utils.texts import esc, fmt_date
 
@@ -153,10 +153,12 @@ def build_card(user: User) -> str:
 
     guarantees: list[tuple[str, object]] = []
     if settings.get_bool("check_show_deposit"):
-        guarantees.append(("Страховой депозит", mono(f"{user.deposit:.2f} USDT")))
+        guarantees.append(("Страховой депозит", mono(fmt(user.deposit))))
+    if settings.get_bool("reviews_show_in_check"):
+        guarantees.append(("Отзывы (+ / −)", mono(user.reputation)))
     if settings.get_bool("check_show_deals"):
         guarantees.append(("Закрытых сделок", mono(user.deals_done)))
-        guarantees.append(("Оборот", mono(f"{user.deals_volume:.2f} USDT")))
+        guarantees.append(("Оборот", mono(fmt(user.deals_volume))))
 
     parts = [
         title("🔍", "Проверка пользователя") + "\n" + tree(identity),

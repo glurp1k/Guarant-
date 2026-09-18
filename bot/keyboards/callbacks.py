@@ -59,3 +59,9 @@ class SettingCB(CallbackData, prefix="st"):
     key: str | None = None
     value: str | None = None
     page: int = 0
+
+
+class ReviewCB(CallbackData, prefix="rv"):
+    action: str                     # rate | skip | list
+    deal_id: int = 0
+    value: str | None = None        # "+" или "-"

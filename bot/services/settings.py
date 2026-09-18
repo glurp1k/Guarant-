@@ -47,6 +47,7 @@ CATEGORIES: dict[str, str] = {
     "withdraw": "📤 Вывод",
     "requisites": "🔑 Реквизиты и API",
     "check": "🔍 Проверка по юзернейму",
+    "reviews": "⭐ Отзывы",
     "menu": "⌨️ Кнопки меню",
     "icons": "✨ Иконки разделов",
     "texts": "📝 Тексты",
@@ -145,6 +146,14 @@ DEFINITIONS: tuple[SettingDef, ...] = (
     SettingDef("icon_deposit", "🛡", "emoji", "Иконка: Страховой депозит", "icons"),
     SettingDef("icon_check", "🔍", "emoji", "Иконка: Проверка пользователя", "icons"),
     SettingDef("icon_deal", "🤝", "emoji", "Иконка: Сделка", "icons"),
+    SettingDef("icon_reviews", "⭐", "emoji", "Иконка: Отзывы", "icons"),
+
+    # -------------------------------- Отзывы ------------------------------- #
+    SettingDef("reviews_enabled", "1", "bool", "Отзывы включены", "reviews"),
+    SettingDef("reviews_comment_required", "0", "bool", "Требовать комментарий", "reviews"),
+    SettingDef("reviews_show_in_profile", "1", "bool", "Показывать в профиле", "reviews"),
+    SettingDef("reviews_show_in_check", "1", "bool", "Показывать при проверке", "reviews"),
+    SettingDef("reviews_ask_after_deal", "1", "bool", "Предлагать отзыв после сделки", "reviews"),
 
     # ---------------------------- Кнопки меню ------------------------------ #
     # На каждую кнопку три параметра: подпись, иконка и цвет.

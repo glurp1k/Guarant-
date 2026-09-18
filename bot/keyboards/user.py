@@ -10,7 +10,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.db.models import Account, PayMethod
-from bot.keyboards.callbacks import DealCB, DepositCB, MenuCB, TopupCB, WithdrawCB
+from bot.keyboards.callbacks import DealCB, DepositCB, MenuCB, ReviewCB, TopupCB, WithdrawCB
 from bot.services import payments, withdrawals
 from bot.services.settings import settings
 
@@ -196,5 +196,25 @@ def join_deal(deal_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="✅ Присоединиться к сделке", callback_data=DealCB(action="join", deal_id=deal_id))
     builder.button(text="✕ Отказаться", callback_data=MenuCB(action="cancel"))
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def review_ask(deal_id: int) -> InlineKeyboardMarkup:
+    """Предложение оценить вторую сторону после закрытой сделки."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="👍 Положительный", callback_data=ReviewCB(action="rate", deal_id=deal_id, value="+"))
+    builder.button(text="👎 Отрицательный", callback_data=ReviewCB(action="rate", deal_id=deal_id, value="-"))
+    builder.button(text="✕ Не оставлять", callback_data=ReviewCB(action="skip", deal_id=deal_id))
+    builder.adjust(2, 1)
+    return builder.as_markup()
+
+
+def review_skip_comment(deal_id: int, value: str) -> InlineKeyboardMarkup:
+    """Комментарий необязателен — можно отправить отзыв без него."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Отправить без комментария",
+                   callback_data=ReviewCB(action="save", deal_id=deal_id, value=value))
+    builder.button(text="✕ Отмена", callback_data=ReviewCB(action="skip", deal_id=deal_id))
     builder.adjust(1)
     return builder.as_markup()

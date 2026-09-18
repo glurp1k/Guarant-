@@ -28,7 +28,7 @@ from bot.db import close_db, init_db, session_scope  # noqa: E402
 from bot.db.models import Account, CommissionPayer, DealRole, PayMethod, TxKind  # noqa: E402
 from bot.handlers import build_router  # noqa: E402
 from bot.keyboards import callbacks as cb  # noqa: E402
-from bot.services import deals, deposits, ledger, payments, users, withdrawals  # noqa: E402
+from bot.services import deals, deposits, ledger, payments, reviews, users, withdrawals  # noqa: E402
 from bot.services.settings import DEFINITIONS, settings  # noqa: E402
 from bot.utils.money import parse_amount, q2  # noqa: E402
 from bot.utils.texts import normalize_username  # noqa: E402
@@ -120,7 +120,7 @@ async def check_money() -> None:
         back = await deposits.move_to_balance(s, seller, Decimal("10"))
         assert seller.deposit == Decimal("30") and back == Decimal("10")
         card = deposits.build_card(seller)
-        assert "30.00" in card
+        assert "30,00" in card, card
         ok("депозит: пополнение с баланса, снятие, карточка проверки")
 
         fee = withdrawals.calc_fee(Decimal("20"), PayMethod.TRC20, Account.BALANCE)
@@ -142,6 +142,28 @@ async def check_money() -> None:
         except ledger.InsufficientFunds:
             await s.rollback()
         ok("баланс нельзя увести в минус")
+
+        # --- отзывы ---
+        closed = await deals.by_code(s, deal.code)
+        await reviews.leave(s, closed, buyer, rating=1, comment="всё чётко")
+        assert (seller.reviews_plus, seller.reviews_minus) == (1, 0), seller.reputation
+
+        try:
+            await reviews.leave(s, closed, buyer, rating=-1)
+            raise AssertionError("второй отзыв по той же сделке не должен пройти")
+        except reviews.ReviewError:
+            pass
+        assert seller.reputation == "1 / 0", seller.reputation
+
+        open_deal = await deals.create(s, seller, Decimal("10"), "не закрыта",
+                                       DealRole.SELLER, CommissionPayer.SELLER)
+        await deals.join(s, open_deal, buyer)
+        try:
+            await reviews.leave(s, open_deal, buyer, rating=1)
+            raise AssertionError("отзыв по незакрытой сделке не должен пройти")
+        except reviews.ReviewError:
+            pass
+        ok("отзыв: один на сделку, только после закрытия, счётчики сходятся")
 
         # Поиск для проверки депозита: ID, юзернейм, @юзернейм, ссылка,
         # любой регистр — всё должно вести к одному человеку.

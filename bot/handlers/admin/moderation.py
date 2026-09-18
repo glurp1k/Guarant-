@@ -264,6 +264,10 @@ async def dispute_release(call: CallbackQuery, callback_data: AdminItemCB, sessi
     await _notify(call.bot, deal.buyer_id,
                   f"⚖️ Спор по сделке <b>{deal.code}</b> решён в пользу продавца.")
 
+    from bot.handlers.reviews import offer_both
+
+    await offer_both(call.bot, deal)
+
 
 @router.callback_query(AdminItemCB.filter(F.action == "deal_refund"))
 async def dispute_refund(call: CallbackQuery, callback_data: AdminItemCB, session: AsyncSession, user: User) -> None:
@@ -290,6 +294,10 @@ async def dispute_refund(call: CallbackQuery, callback_data: AdminItemCB, sessio
                   f"Возвращено: <b>{fmt(deal.buyer_charge)}</b>")
     await _notify(call.bot, deal.seller_id,
                   f"⚖️ Спор по сделке <b>{deal.code}</b> решён в пользу покупателя.")
+
+    from bot.handlers.reviews import offer_both
+
+    await offer_both(call.bot, deal)
 
 
 # --------------------------------------------------------------------------- #

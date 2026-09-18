@@ -25,6 +25,10 @@ class DealSG(StatesGroup):
     dispute_reason = State()
 
 
+class ReviewSG(StatesGroup):
+    comment = State()
+
+
 class CheckSG(StatesGroup):
     username = State()
 
