@@ -17,6 +17,7 @@ from bot.db import base as db_base
 from bot.db import close_db, init_db, session_scope
 from bot.handlers import build_router
 from bot.middlewares import DbSessionMiddleware, UserMiddleware
+from bot.session import build_session
 from bot.services import deals as deals_service
 from bot.services.settings import settings
 from bot.services.watcher import run_watcher
@@ -63,7 +64,11 @@ async def main() -> None:
     async with session_scope() as session:
         await settings.load(session)
 
-    bot = Bot(token=config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(
+        token=config.bot_token,
+        session=build_session(ca_file=config.ssl_cert_file, proxy=config.bot_proxy),
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     dispatcher = Dispatcher(storage=MemoryStorage())
 
     # Именно outer: фильтры (например, IsAdmin) проверяются раньше внутренних

@@ -27,6 +27,14 @@ class Config(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///data/guarant.db"
     log_level: str = "INFO"
 
+    # Прокси до api.telegram.org. Нужен там, где Telegram закрыт.
+    # Для работы требуется пакет aiohttp-socks.
+    bot_proxy: str = ""
+
+    # Свой центр сертификации: корпоративная сеть, песочница, свой egress.
+    # Переменная стандартная, её же читают curl, pip и прочие.
+    ssl_cert_file: str = Field(default="", validation_alias="SSL_CERT_FILE")
+
     # Строкой, а не списком: так значение читается одинаково и из .env,
     # и из переменных окружения, без JSON-синтаксиса.
     admin_ids_raw: str = Field(default="", validation_alias="ADMIN_IDS")
