@@ -73,7 +73,7 @@ async def ask_from_balance(call: CallbackQuery, user: User, state: FSMContext) -
         f"🔁 <b>Перевод с баланса в депозит</b>\n\n"
         f"Доступно на балансе: <b>{fmt(user.balance)}</b>\n\n"
         f"Введите сумму:",
-        reply_markup=kb.back_only(),
+        reply_markup=kb.cancel(),
     )
     await call.answer()
 
@@ -119,7 +119,7 @@ async def ask_to_balance(call: CallbackQuery, user: User, state: FSMContext) -> 
         f"↩️ <b>Снятие депозита на баланс</b>\n\n"
         f"В депозите: <b>{fmt(user.deposit)}</b>{fee_note}\n\n"
         f"Введите сумму:",
-        reply_markup=kb.back_only(),
+        reply_markup=kb.cancel(),
     )
     await call.answer()
 

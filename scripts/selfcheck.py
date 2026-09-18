@@ -143,9 +143,19 @@ async def check_money() -> None:
             await s.rollback()
         ok("баланс нельзя увести в минус")
 
-        found = await users.find_by_username(s, "SC_SELLER")
-        assert found is not None and found.tg_id == 9001
-        ok("поиск пользователя по юзернейму без учёта регистра")
+        # Поиск для проверки депозита: ID, юзернейм, @юзернейм, ссылка,
+        # любой регистр — всё должно вести к одному человеку.
+        for query in ("9001", "sc_seller", "SC_Seller", "@SC_SELLER",
+                      "https://t.me/Sc_Seller", "t.me/sc_seller"):
+            found = await users.find_any(s, query)
+            assert found is not None and found.tg_id == 9001, query
+        assert await users.find_any(s, "нет_такого") is None
+        assert await users.find_any(s, "123456789") is None
+        ok("поиск по ID, юзернейму и ссылке, регистр не важен")
+
+        card = deposits.build_card(seller)
+        assert "├" in card and "╰" in card and "<code>" in card
+        ok("карточка свёрстана деревом с моноширинными значениями")
 
 
 async def main() -> int:
@@ -162,6 +172,13 @@ async def main() -> int:
 
     assert len({d.key for d in DEFINITIONS}) == len(DEFINITIONS), "дублирующиеся ключи настроек"
     ok(f"реестр настроек без дублей ({len(DEFINITIONS)} параметров)")
+
+    from bot.keyboards.reply import main_keyboard
+
+    rows = [[b.text for b in row] for row in main_keyboard(is_admin=True).keyboard]
+    assert [len(row) for row in rows] == [1, 2, 2, 1, 1], rows
+    assert all(text.strip() for row in rows for text in row), rows
+    ok(f"нижняя клавиатура: раскладка {[len(r) for r in rows]}")
 
     await close_db()
     TMP_DB.unlink(missing_ok=True)

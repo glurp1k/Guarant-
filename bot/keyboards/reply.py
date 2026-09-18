@@ -1,13 +1,14 @@
 """Постоянная клавиатура внизу экрана.
 
-Верхний уровень навигации живёт здесь, действия внутри разделов — на
-инлайн-кнопках. Реплай-клавиатура и инлайн-клавиатура не уживаются в одном
-сообщении, поэтому схема такая: клавиатура ставится один раз на /start и
-висит всегда, а каждый экран приходит со своими инлайн-кнопками.
+Раскладка: широкая кнопка основного действия, затем две пары, затем
+широкая. Верхний уровень навигации живёт здесь, действия внутри разделов —
+на инлайн-кнопках под сообщением.
 
-⚠️ Подписи — черновик до макетов. Менять здесь, в одном месте.
-Премиум-эмодзи на кнопках Telegram не поддерживает (подпись кнопки —
-обычная строка без entities), поэтому тут только юникод.
+Подписи берутся из настроек (раздел «Кнопки меню»), поэтому переименовать
+или спрятать кнопку можно из админки. Пустая подпись = кнопка скрыта.
+
+Подпись кнопки Telegram передаёт обычной строкой, без entities, поэтому
+премиум-эмодзи ставятся в текст сообщения, а не на саму кнопку.
 """
 
 from __future__ import annotations
@@ -16,44 +17,51 @@ from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemo
 
 from bot.services.settings import settings
 
-BUTTONS: dict[str, str] = {
-    "deals": "🤝 Сделки",
-    "balance": "💰 Баланс",
-    "deposit": "🛡 Депозит",
-    "check": "🔍 Проверить",
-    "rules": "📜 Правила",
-    "support": "💬 Поддержка",
-    "admin": "⚙️ Админка",
-}
+# Ключ настройки → нужен ли раздел вообще (проверяется на лету).
+DEAL = "btn_deal"
+DEPOSIT = "btn_deposit"
+CHECK = "btn_check"
+PROFILE = "btn_profile"
+INFO = "btn_info"
+PROJECTS = "btn_projects"
+ADMIN = "btn_admin"
+
+
+def label(key: str) -> str:
+    return settings.get(key).strip()
+
+
+def _enabled(key: str) -> bool:
+    """Кнопка показывается, если у неё есть подпись и раздел не выключен."""
+    if not label(key):
+        return False
+    if key == DEPOSIT:
+        return settings.get_bool("deposit_enabled")
+    if key == CHECK:
+        return settings.get_bool("check_enabled")
+    if key == DEAL:
+        return settings.get_bool("deal_enabled")
+    return True
+
+
+def _row(*keys: str) -> list[KeyboardButton]:
+    return [KeyboardButton(text=label(key)) for key in keys if _enabled(key)]
 
 
 def main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
-    """Разделы верхнего уровня. Выключенные в админке не показываем."""
-    rows: list[list[KeyboardButton]] = [
-        [KeyboardButton(text=BUTTONS["deals"]), KeyboardButton(text=BUTTONS["balance"])]
-    ]
+    rows = [row for row in (_row(DEAL), _row(DEPOSIT, CHECK), _row(PROFILE, INFO), _row(PROJECTS)) if row]
 
-    second = []
-    if settings.get_bool("deposit_enabled"):
-        second.append(KeyboardButton(text=BUTTONS["deposit"]))
-    if settings.get_bool("check_enabled"):
-        second.append(KeyboardButton(text=BUTTONS["check"]))
-    if second:
-        rows.append(second)
+    if is_admin and _enabled(ADMIN):
+        rows.append(_row(ADMIN))
 
-    third = [KeyboardButton(text=BUTTONS["rules"])]
-    if settings.get("support_username").strip():
-        third.append(KeyboardButton(text=BUTTONS["support"]))
-    rows.append(third)
-
-    if is_admin:
-        rows.append([KeyboardButton(text=BUTTONS["admin"])])
+    if not rows:  # всё спрятали в админке — оставляем хотя бы профиль
+        rows = [[KeyboardButton(text="👤 Профиль")]]
 
     return ReplyKeyboardMarkup(
         keyboard=rows,
         resize_keyboard=True,
         is_persistent=True,
-        input_field_placeholder="Выберите раздел или введите @юзернейм",
+        input_field_placeholder="Выберите раздел или пришлите @юзернейм",
     )
 
 

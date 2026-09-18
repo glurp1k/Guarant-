@@ -104,7 +104,7 @@ async def ask_amount(call: CallbackQuery, callback_data: WithdrawCB, user: User,
         f"Способ: <b>{payments.method_title(method)}</b>\n"
         f"Доступно: <b>{fmt(_available(user, source))}</b>\n\n"
         f"Комиссия будет удержана из суммы вывода.",
-        reply_markup=kb.back_only(),
+        reply_markup=kb.cancel(),
     )
     await call.answer()
 

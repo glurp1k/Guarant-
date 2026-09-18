@@ -1,4 +1,4 @@
-"""Главное меню, профиль, правила, история операций."""
+"""Главное меню, профиль, информация, история операций."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from bot.services import deposits, ledger
 from bot.services.settings import settings
 from bot.utils.money import fmt
 from bot.utils.render import Event, show
+from bot.utils.style import block, mono, note, title, tree
 from bot.utils.texts import esc, fmt_date
 
 log = logging.getLogger(__name__)
@@ -43,24 +44,34 @@ def greeting(user: User) -> str:
     return settings.get("text_start").replace("{name}", esc(user.full_name or "друг"))
 
 
-def balance_text(user: User) -> str:
-    lines = [
-        "💰 <b>Ваш счёт</b>",
-        "",
-        f"Баланс: <b>{fmt(user.balance)}</b>",
-    ]
+def profile_text(user: User) -> str:
+    account_rows = [("Баланс", mono(fmt(user.balance)))]
     if settings.get_bool("deposit_enabled"):
-        lines.append(f"Страховой депозит: <b>{fmt(user.deposit)}</b>")
-        unlock_at = deposits.locked_until(user)
-        if unlock_at is not None:
-            lines.append(f"🔒 Депозит заморожен до {fmt_date(unlock_at)} UTC")
-    lines += ["", f"🤝 Закрытых сделок: <b>{user.deals_done}</b>", f"💼 Оборот: <b>{fmt(user.deals_volume)}</b>"]
-    return "\n".join(lines)
+        account_rows.append(("Страховой депозит", mono(fmt(user.deposit))))
+
+    parts = [
+        title("👤", "Профиль") + "\n" + tree([
+            ("Имя", esc(user.full_name) or "—"),
+            ("Юзернейм", mono(f"@{esc(user.username)}") if user.username else "—"),
+            ("ID", mono(user.tg_id)),
+            ("В сервисе с", fmt_date(user.created_at)),
+        ]),
+        title("💰", "Счёт") + "\n" + tree(account_rows),
+        title("🤝", "Сделки") + "\n" + tree([
+            ("Закрыто", mono(user.deals_done)),
+            ("Оборот", mono(fmt(user.deals_volume))),
+        ]),
+    ]
+
+    unlock_at = deposits.locked_until(user)
+    if unlock_at is not None:
+        parts.append(note("🔒", f"Депозит заморожен до {fmt_date(unlock_at)} UTC"))
+
+    return block(*parts)
 
 
 # --------------------------------------------------------------------------- #
-# Экраны. Каждый открывается и с инлайн-кнопки, и с реплай-клавиатуры,
-# поэтому принимает Event, а не только CallbackQuery.
+# Экраны. Каждый открывается и с инлайн-кнопки, и с нижней клавиатуры.
 # --------------------------------------------------------------------------- #
 
 
@@ -69,35 +80,48 @@ async def render_main(event: Event, user: User, state: FSMContext) -> None:
     await show(event, greeting(user), kb.main_menu(user.is_admin))
 
 
-async def render_balance(event: Event, user: User, state: FSMContext) -> None:
+async def render_profile(event: Event, user: User, state: FSMContext) -> None:
     await state.clear()
-    await show(event, balance_text(user), kb.balance_menu())
+    await show(event, profile_text(user), kb.profile_menu())
+
+
+async def render_info(event: Event) -> None:
+    await show(event, settings.get("text_info"), kb.info_menu())
 
 
 async def render_rules(event: Event) -> None:
     await show(event, settings.get("text_rules"), kb.back_only())
 
 
+async def render_projects(event: Event) -> None:
+    await show(event, settings.get("text_projects"), kb.back_only())
+
+
 async def render_history(event: Event, session: AsyncSession, user: User) -> None:
     entries = await ledger.history(session, user.tg_id, limit=15)
 
     if not entries:
-        text = "🧾 <b>История операций</b>\n\nПока пусто."
+        text = block(title("🧾", "История операций"), "Пока пусто.")
     else:
         rows = []
         for entry in entries:
             sign = "＋" if entry.amount > 0 else "−"
             account = "🛡" if entry.account == Account.DEPOSIT.value else "💰"
-            title = KIND_TITLES.get(entry.kind, entry.kind)
-            rows.append(f"{account} {sign}{abs(entry.amount):.2f} — {title} · {fmt_date(entry.created_at)}")
-        text = "🧾 <b>История операций</b>\n\n" + "\n".join(rows)
+            kind = KIND_TITLES.get(entry.kind, entry.kind)
+            rows.append(f"{account} {sign}{abs(entry.amount):.2f} — {kind} · {fmt_date(entry.created_at)}")
+        text = block(title("🧾", "История операций"), "\n".join(rows))
 
-    await show(event, text, kb.balance_menu())
+    await show(event, text, kb.profile_menu())
 
 
 # --------------------------------------------------------------------------- #
 # Точки входа
 # --------------------------------------------------------------------------- #
+
+
+async def greet(message: Message, user: User) -> None:
+    """Приветствие вместе с постоянной клавиатурой внизу экрана."""
+    await message.answer(greeting(user), reply_markup=rkb.main_keyboard(user.is_admin))
 
 
 @router.message(CommandStart(deep_link=True))
@@ -117,6 +141,7 @@ async def start_deep_link(
 
         deal = await deals_service.by_code(session, payload[5:])
         if deal is not None:
+            await greet(message, user)
             await show_join_offer(message, session, user, deal)
             return
         await message.answer("❌ Сделка не найдена или ссылка устарела.")
@@ -136,25 +161,36 @@ async def menu_command(message: Message, user: User, state: FSMContext) -> None:
     await greet(message, user)
 
 
-async def greet(message: Message, user: User) -> None:
-    """Приветствие вместе с постоянной клавиатурой внизу экрана."""
-    await message.answer(greeting(user), reply_markup=rkb.main_keyboard(user.is_admin))
-    await message.answer("Выберите раздел:", reply_markup=kb.main_menu(user.is_admin))
-
-
 @router.callback_query(MenuCB.filter(F.action == "main"))
 async def main_menu(call: CallbackQuery, user: User, state: FSMContext) -> None:
     await render_main(call, user, state)
 
 
-@router.callback_query(MenuCB.filter(F.action == "balance"))
-async def show_balance(call: CallbackQuery, user: User, state: FSMContext) -> None:
-    await render_balance(call, user, state)
+@router.callback_query(MenuCB.filter(F.action == "cancel"))
+async def cancel(call: CallbackQuery, state: FSMContext) -> None:
+    """Инлайн «✕ Отмена» под диалогом: выходим, навигация остаётся внизу."""
+    await state.clear()
+    await show(call, "✕ Отменено.", None, toast="Отменено")
+
+
+@router.callback_query(MenuCB.filter(F.action == "profile"))
+async def show_profile(call: CallbackQuery, user: User, state: FSMContext) -> None:
+    await render_profile(call, user, state)
+
+
+@router.callback_query(MenuCB.filter(F.action == "info"))
+async def show_info(call: CallbackQuery) -> None:
+    await render_info(call)
 
 
 @router.callback_query(MenuCB.filter(F.action == "rules"))
 async def show_rules(call: CallbackQuery) -> None:
     await render_rules(call)
+
+
+@router.callback_query(MenuCB.filter(F.action == "projects"))
+async def show_projects(call: CallbackQuery) -> None:
+    await render_projects(call)
 
 
 @router.callback_query(MenuCB.filter(F.action == "history"))

@@ -149,7 +149,7 @@ async def pick_role(call: CallbackQuery, callback_data: DealCB, state: FSMContex
     await call.message.edit_text(
         f"💵 Введите сумму сделки в USDT.{hint}\n\n"
         f"Комиссия сервиса: <b>{settings.get_decimal('deal_commission_percent')}%</b>",
-        reply_markup=kb.back_only(),
+        reply_markup=kb.cancel(),
     )
     await call.answer()
 
@@ -385,7 +385,7 @@ async def ask_dispute_reason(call: CallbackQuery, callback_data: DealCB, state: 
         "⚖️ <b>Открытие спора</b>\n\n"
         "Опишите проблему: что было обещано, что пошло не так.\n"
         "Сообщение увидит администрация.",
-        reply_markup=kb.back_only(),
+        reply_markup=kb.cancel(),
     )
     await call.answer()
 

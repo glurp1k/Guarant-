@@ -14,7 +14,9 @@ from bot.db.models import User
 async def get_or_create(session: AsyncSession, tg_id: int, username: str | None, full_name: str) -> User:
     """Найти пользователя или создать, попутно освежив юзернейм и имя."""
     user = await session.get(User, tg_id)
-    normalized = (username or "").lower() or None
+    # Храним оригинальное написание — его показываем в карточке.
+    # Поиск всё равно регистронезависимый, см. find_by_username().
+    normalized = (username or "").strip() or None
 
     if user is None:
         user = User(
@@ -52,13 +54,22 @@ async def find_by_username(session: AsyncSession, username: str) -> User | None:
 
 
 async def find_any(session: AsyncSession, query: str) -> User | None:
-    """Поиск по ID или юзернейму — для админки."""
-    query = query.strip().lstrip("@")
-    if query.isdigit():
-        user = await session.get(User, int(query))
+    """Поиск по ID, юзернейму, @юзернейму или ссылке t.me.
+
+    Регистр не важен: UserName и username — один и тот же человек.
+    """
+    from bot.utils.texts import normalize_username
+
+    raw = (query or "").strip()
+    if raw.isdigit():
+        user = await session.get(User, int(raw))
         if user is not None:
             return user
-    return await find_by_username(session, query)
+
+    username = normalize_username(raw)
+    if username is None:
+        return None
+    return await find_by_username(session, username)
 
 
 async def is_admin(session: AsyncSession, tg_id: int) -> bool:

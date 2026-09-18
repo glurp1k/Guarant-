@@ -93,7 +93,7 @@ async def ask_amount(call: CallbackQuery, callback_data: TopupCB, state: FSMCont
         f"💵 Введите сумму пополнения в USDT.\n\n"
         f"Способ: <b>{payments.method_title(method)}</b>\n"
         f"Например: <code>25</code> или <code>10.5</code>",
-        reply_markup=kb.back_only(),
+        reply_markup=kb.cancel(),
     )
     await call.answer()
 
