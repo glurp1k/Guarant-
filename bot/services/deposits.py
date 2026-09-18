@@ -128,6 +128,19 @@ def trust_badge(user: User) -> str:
     return "⚪️ <b>Без депозита</b> — работайте только через гаранта"
 
 
+def trust_label(user: User) -> str:
+    """Короткий статус — для строки в профиле."""
+    if user.is_banned:
+        return "в чёрном списке"
+    if user.is_verified:
+        return "верифицирован"
+
+    threshold = settings.get_decimal("check_trusted_from")
+    if threshold > ZERO and user.deposit >= threshold:
+        return "надёжный"
+    return "есть депозит" if user.deposit > ZERO else "без депозита"
+
+
 def build_card(user: User) -> str:
     """Публичная карточка пользователя. Состав полей задаётся в админке."""
     identity = [

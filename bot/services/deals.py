@@ -13,10 +13,11 @@ from __future__ import annotations
 import logging
 import secrets
 import string
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import or_, select
+from sqlalchemy import BigInteger, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import (
@@ -28,6 +29,7 @@ from bot.db.models import (
     TxKind,
     User,
 )
+from bot.db.types import from_micro
 from bot.services import ledger
 from bot.services.settings import settings
 from bot.utils.money import ZERO, q2
@@ -287,3 +289,36 @@ async def expire_unpaid(session: AsyncSession) -> list[Deal]:
     if stale:
         await session.commit()
     return stale
+
+
+@dataclass(frozen=True, slots=True)
+class DealStats:
+    """Закрытые сделки пользователя в разрезе ролей — для профиля."""
+
+    as_seller: int = 0
+    seller_volume: Decimal = ZERO
+    as_buyer: int = 0
+    buyer_volume: Decimal = ZERO
+
+    @property
+    def total(self) -> int:
+        return self.as_seller + self.as_buyer
+
+    @property
+    def volume(self) -> Decimal:
+        return self.seller_volume + self.buyer_volume
+
+
+async def stats_for(session: AsyncSession, user_id: int) -> DealStats:
+    """Считаем только завершённые сделки: отменённые в статистику не идут."""
+
+    async def side(column) -> tuple[int, Decimal]:
+        row = (await session.execute(
+            select(func.count(Deal.id), func.sum(cast(Deal.amount, BigInteger)))
+            .where(Deal.status == DealStatus.COMPLETED.value, column == user_id)
+        )).one()
+        return int(row[0] or 0), from_micro(row[1])
+
+    as_seller, seller_volume = await side(Deal.seller_id)
+    as_buyer, buyer_volume = await side(Deal.buyer_id)
+    return DealStats(as_seller, seller_volume, as_buyer, buyer_volume)

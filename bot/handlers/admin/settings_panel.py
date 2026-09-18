@@ -30,6 +30,7 @@ TYPE_HINTS = {
     "bool": "<code>да</code> или <code>нет</code>",
     "str": "строка в одну строку",
     "text": "любой текст, поддерживается HTML-разметка Telegram",
+    "emoji": "один эмодзи — обычный или премиум",
 }
 
 
@@ -67,7 +68,9 @@ def _validate(definition: SettingDef, raw: str) -> str | None:
     if definition.choices and raw not in definition.choices:
         return None
 
-    if definition.type == "str" and "\n" in raw:
+    if definition.type in ("str", "emoji") and "\n" in raw:
+        return None
+    if definition.type == "emoji" and len(raw) > 128:
         return None
 
     return raw
@@ -165,7 +168,9 @@ async def save_value(message: Message, session: AsyncSession, user: User, state:
         return
 
     # Для текстов сохраняем разметку как есть, чтобы админ мог верстать сообщения.
-    raw = message.html_text if definition.type == "text" and message.html_text else (message.text or "")
+    # Для текстов и иконок берём HTML: только так переживает премиум-эмодзи.
+    keep_html = definition.type in ("text", "emoji")
+    raw = message.html_text if keep_html and message.html_text else (message.text or "")
     value = _validate(definition, raw)
 
     if value is None:

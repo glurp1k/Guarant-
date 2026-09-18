@@ -17,7 +17,7 @@ from bot.keyboards.callbacks import MenuCB
 from bot.services import deposits, users as users_service
 from bot.services.settings import settings
 from bot.states import CheckSG
-from bot.utils.render import Event, deny, show
+from bot.utils.render import Event, deny, reply, show
 from bot.utils.style import block, mono, note, title, tree
 from bot.utils.texts import esc
 
@@ -60,10 +60,10 @@ async def _reply_card(message: Message, session: AsyncSession, raw: str) -> None
     target = await users_service.find_any(session, query)
 
     if target is None:
-        await message.answer(not_found(query[:64] or "—"), reply_markup=kb.cancel())
+        await reply(message, not_found(query[:64] or "—"), kb.cancel())
         return
 
-    await message.answer(deposits.build_card(target), reply_markup=kb.back_only())
+    await reply(message, deposits.build_card(target), kb.back_only())
 
 
 @router.callback_query(MenuCB.filter(F.action == "check"))

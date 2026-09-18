@@ -19,7 +19,7 @@ from bot.services import deposits, ledger
 from bot.services.settings import settings
 from bot.utils.money import fmt
 from bot.utils.render import Event, show
-from bot.utils.style import block, mono, note, title, tree
+from bot.utils.style import block, bold, mono, note, section, title
 from bot.utils.texts import esc, fmt_date
 
 log = logging.getLogger(__name__)
@@ -44,22 +44,32 @@ def greeting(user: User) -> str:
     return settings.get("text_start").replace("{name}", esc(user.full_name or "друг"))
 
 
-def profile_text(user: User) -> str:
-    account_rows = [("Баланс", mono(fmt(user.balance)))]
-    if settings.get_bool("deposit_enabled"):
-        account_rows.append(("Страховой депозит", mono(fmt(user.deposit))))
+def profile_text(user: User, stats: deals_service.DealStats) -> str:
+    """Профиль по макету: разделы с иконкой и строки списком.
+
+    Иконки берутся из админки, поэтому вместо обычного эмодзи там может
+    стоять премиум — оно хранится тегом <tg-emoji> и так и отдаётся.
+    """
+    icon = settings.get
 
     parts = [
-        title("👤", "Профиль") + "\n" + tree([
-            ("Имя", esc(user.full_name) or "—"),
-            ("Юзернейм", mono(f"@{esc(user.username)}") if user.username else "—"),
+        section(icon("icon_info"), "Информация", [
+            ("Никнейм", bold(f"@{esc(user.username)}") if user.username else "—"),
             ("ID", mono(user.tg_id)),
-            ("В сервисе с", fmt_date(user.created_at)),
+            ("Кол-во сделок", bold(stats.total)),
         ]),
-        title("💰", "Счёт") + "\n" + tree(account_rows),
-        title("🤝", "Сделки") + "\n" + tree([
-            ("Закрыто", mono(user.deals_done)),
-            ("Оборот", mono(fmt(user.deals_volume))),
+        section(icon("icon_reputation"), "Репутация", [
+            ("Депозит", bold(fmt(user.deposit))) if settings.get_bool("deposit_enabled") else ("", ""),
+            ("Статус", bold(deposits.trust_label(user))),
+            ("Дата регистрации", bold(fmt_date(user.created_at, with_time=False))),
+        ]),
+        section(icon("icon_stats"), "Статистика сделок", [
+            (f"Сделки ({stats.total})", bold(fmt(stats.volume))),
+            (f"Покупатель ({stats.as_buyer})", bold(fmt(stats.buyer_volume))),
+            (f"Продавец ({stats.as_seller})", bold(fmt(stats.seller_volume))),
+        ]),
+        section(icon("icon_finance"), "Финансы", [
+            ("Баланс", bold(fmt(user.balance))),
         ]),
     ]
 
@@ -80,9 +90,10 @@ async def render_main(event: Event, user: User, state: FSMContext) -> None:
     await show(event, greeting(user), kb.main_menu(user.is_admin))
 
 
-async def render_profile(event: Event, user: User, state: FSMContext) -> None:
+async def render_profile(event: Event, session: AsyncSession, user: User, state: FSMContext) -> None:
     await state.clear()
-    await show(event, profile_text(user), kb.profile_menu())
+    stats = await deals_service.stats_for(session, user.tg_id)
+    await show(event, profile_text(user, stats), kb.profile_menu())
 
 
 async def render_info(event: Event) -> None:
@@ -174,8 +185,8 @@ async def cancel(call: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.callback_query(MenuCB.filter(F.action == "profile"))
-async def show_profile(call: CallbackQuery, user: User, state: FSMContext) -> None:
-    await render_profile(call, user, state)
+async def show_profile(call: CallbackQuery, session: AsyncSession, user: User, state: FSMContext) -> None:
+    await render_profile(call, session, user, state)
 
 
 @router.callback_query(MenuCB.filter(F.action == "info"))

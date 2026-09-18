@@ -158,6 +158,61 @@ async def check_money() -> None:
         ok("карточка свёрстана деревом с моноширинными значениями")
 
 
+async def check_presentation() -> None:
+    """Оформление: валюта из настроек и премиум-эмодзи в заголовках."""
+    from bot.handlers.admin.settings_panel import _validate
+    from bot.handlers.common import profile_text
+    from bot.services.settings import DEFS_BY_KEY
+    from bot.utils.money import fmt
+
+    async with session_scope() as s:
+        await settings.set(s, "currency_symbol", "$")
+        await settings.set(s, "currency_position", "before")
+        await settings.set(s, "currency_comma", "1")
+        assert fmt(Decimal("1234.5")) == "$ 1234,50", fmt(Decimal("1234.5"))
+
+        await settings.set(s, "currency_symbol", "USDT")
+        await settings.set(s, "currency_position", "after")
+        await settings.set(s, "currency_comma", "0")
+        assert fmt(Decimal("1234.5")) == "1234.50 USDT", fmt(Decimal("1234.5"))
+        ok("сумма форматируется по настройкам валюты")
+
+        # Премиум-эмодзи приезжает от админа готовым HTML — оно должно
+        # пережить проверку значения и попасть в заголовок раздела.
+        premium = '<tg-emoji emoji-id="5215347090674192358">❓</tg-emoji>'
+        assert _validate(DEFS_BY_KEY["icon_info"], premium) == premium
+        assert _validate(DEFS_BY_KEY["icon_info"], "две\nстроки") is None
+        await settings.set(s, "icon_info", premium)
+
+        user = await users.find_any(s, "9001")
+        stats = await deals.stats_for(s, user.tg_id)
+        rendered = profile_text(user, stats)
+        assert rendered.startswith(premium), rendered[:80]
+        assert "• Никнейм:" in rendered and "• ID:" in rendered
+        ok("премиум-эмодзи из админки рендерится в заголовке профиля")
+
+        # 9001 продал одну сделку, 9002 её купил; отменённая в счёт не идёт.
+        assert (stats.as_seller, stats.as_buyer) == (1, 0), stats
+        assert stats.seller_volume == Decimal("50.000000"), stats
+
+        buyer_stats = await deals.stats_for(s, 9002)
+        assert (buyer_stats.as_seller, buyer_stats.as_buyer) == (0, 1), buyer_stats
+        assert buyer_stats.total == 1 and buyer_stats.volume == Decimal("50.000000"), buyer_stats
+        ok("статистика сделок считается отдельно по ролям")
+
+        # Если у бота нет права слать премиум-эмодзи, Telegram отклонит всё
+        # сообщение — должен остаться откат на обычное эмодзи из тега.
+        from bot.utils.render import strip_custom_emoji
+
+        assert strip_custom_emoji(rendered).startswith("❓ <b>Информация</b>")
+        ok("при отказе Telegram премиум-эмодзи заменяется обычным")
+
+        await settings.set(s, "icon_info", DEFS_BY_KEY["icon_info"].default)
+        await settings.set(s, "currency_symbol", "$")
+        await settings.set(s, "currency_position", "before")
+        await settings.set(s, "currency_comma", "1")
+
+
 async def main() -> int:
     await init_db()
 
@@ -172,6 +227,8 @@ async def main() -> int:
 
     assert len({d.key for d in DEFINITIONS}) == len(DEFINITIONS), "дублирующиеся ключи настроек"
     ok(f"реестр настроек без дублей ({len(DEFINITIONS)} параметров)")
+
+    await check_presentation()
 
     from bot.keyboards.reply import main_keyboard
 

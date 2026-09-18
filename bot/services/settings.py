@@ -48,6 +48,7 @@ CATEGORIES: dict[str, str] = {
     "requisites": "🔑 Реквизиты и API",
     "check": "🔍 Проверка по юзернейму",
     "menu": "⌨️ Кнопки меню",
+    "icons": "✨ Иконки разделов",
     "texts": "📝 Тексты",
 }
 
@@ -59,6 +60,10 @@ DEFINITIONS: tuple[SettingDef, ...] = (
     SettingDef("channel_url", "", "str", "Ссылка на канал", "general"),
     SettingDef("chat_url", "", "str", "Ссылка на чат", "general"),
     SettingDef("reviews_url", "", "str", "Ссылка на отзывы", "general"),
+    SettingDef("currency_symbol", "$", "str", "Символ валюты", "general", "Например: $ или USDT"),
+    SettingDef("currency_position", "before", "str", "Символ до или после суммы", "general",
+               "before — «$ 10,00», after — «10,00 USDT»", ("before", "after")),
+    SettingDef("currency_comma", "1", "bool", "Запятая как разделитель дробной части", "general"),
     SettingDef("maintenance", "0", "bool", "Технические работы", "general", "Бот отвечает только админам"),
     SettingDef("maintenance_text", "🛠 Ведутся технические работы, зайдите позже.", "text",
                "Текст тех. работ", "general"),
@@ -128,6 +133,18 @@ DEFINITIONS: tuple[SettingDef, ...] = (
     SettingDef("check_show_deals", "1", "bool", "Показывать количество сделок", "check"),
     SettingDef("check_show_registered", "1", "bool", "Показывать дату регистрации", "check"),
     SettingDef("check_trusted_from", "100", "decimal", "Депозит для статуса «Надёжный», USDT", "check"),
+
+    # --------------------------- Иконки разделов --------------------------- #
+    # Тип emoji: значение сохраняется как HTML, поэтому премиум-эмодзи,
+    # присланное админом, доезжает тегом <tg-emoji> и рендерится в сообщении.
+    SettingDef("icon_info", "❓", "emoji", "Иконка: Информация", "icons",
+               "Можно прислать премиум-эмодзи — сохранится как есть"),
+    SettingDef("icon_reputation", "⭐", "emoji", "Иконка: Репутация", "icons"),
+    SettingDef("icon_stats", "📊", "emoji", "Иконка: Статистика сделок", "icons"),
+    SettingDef("icon_finance", "💰", "emoji", "Иконка: Финансы", "icons"),
+    SettingDef("icon_deposit", "🛡", "emoji", "Иконка: Страховой депозит", "icons"),
+    SettingDef("icon_check", "🔍", "emoji", "Иконка: Проверка пользователя", "icons"),
+    SettingDef("icon_deal", "🤝", "emoji", "Иконка: Сделка", "icons"),
 
     # ---------------------------- Кнопки меню ------------------------------ #
     # Подписи нижней клавиатуры. Порядок строк фиксированный:
@@ -252,6 +269,8 @@ class SettingsService:
             return "✅ вкл" if self.get_bool(key) else "❌ выкл"
         if not raw:
             return "— не задано"
+        if definition.type == "emoji":
+            return raw
         if definition.type == "text":
             flat = " ".join(raw.split())
             return flat[:40] + "…" if len(flat) > 40 else flat

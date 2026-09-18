@@ -26,12 +26,12 @@ def normalize_username(text: str) -> str | None:
     return match.group(1).lower() if match else None
 
 
-def fmt_date(value: datetime | None) -> str:
+def fmt_date(value: datetime | None, with_time: bool = True) -> str:
     if value is None:
         return "—"
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.strftime("%d.%m.%Y %H:%M")
+    return value.strftime("%d.%m.%Y %H:%M" if with_time else "%d.%m.%Y")
 
 
 def plural(number: int, one: str, few: str, many: str) -> str:

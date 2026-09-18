@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
@@ -16,6 +17,37 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
 log = logging.getLogger(__name__)
 
 Event = Message | CallbackQuery
+
+CUSTOM_EMOJI_TAG = re.compile(r"<tg-emoji[^>]*>(.*?)</tg-emoji>", re.DOTALL | re.IGNORECASE)
+
+
+def strip_custom_emoji(text: str) -> str:
+    """Заменить премиум-эмодзи на обычное, которое лежит внутри тега."""
+    return CUSTOM_EMOJI_TAG.sub(r"\1", text)
+
+
+def _is_emoji_error(exc: TelegramBadRequest) -> bool:
+    """Telegram отказал из-за премиум-эмодзи.
+
+    Отправлять <tg-emoji> может только бот с юзернеймом, купленным на
+    Fragment. Если админ вставил премиум-эмодзи в иконку раздела, а права
+    нет, отклоняется всё сообщение — и экран перестаёт открываться.
+    """
+    return "emoji" in str(exc).lower()
+
+
+async def _send(coro_factory, text: str):
+    """Отправить, а при отказе из-за эмодзи — повторить без премиум-эмодзи."""
+    try:
+        return await coro_factory(text)
+    except TelegramBadRequest as exc:
+        if not _is_emoji_error(exc):
+            raise
+        fallback = strip_custom_emoji(text)
+        if fallback == text:
+            raise
+        log.warning("Премиум-эмодзи отклонено Telegram, отправляю без него: %s", exc)
+        return await coro_factory(fallback)
 
 
 async def show(
@@ -28,7 +60,7 @@ async def show(
     """Открыть экран: правкой сообщения или новым — смотря откуда пришли."""
     if isinstance(event, CallbackQuery):
         try:
-            await event.message.edit_text(text, reply_markup=markup)
+            await _send(lambda body: event.message.edit_text(body, reply_markup=markup), text)
         except TelegramBadRequest as exc:
             # Повторное нажатие той же кнопки — Telegram отвечает
             # «message is not modified». Это не ошибка, экран уже открыт.
@@ -37,7 +69,7 @@ async def show(
         await event.answer(toast or "")
         return
 
-    await event.answer(text, reply_markup=markup)
+    await _send(lambda body: event.answer(body, reply_markup=markup), text)
 
 
 async def reply(event: Event, text: str, markup: InlineKeyboardMarkup | None = None) -> None:
@@ -49,7 +81,7 @@ async def reply(event: Event, text: str, markup: InlineKeyboardMarkup | None = N
     target = event.message if isinstance(event, CallbackQuery) else event
     if isinstance(event, CallbackQuery):
         await event.answer()
-    await target.answer(text, reply_markup=markup)
+    await _send(lambda body: target.answer(body, reply_markup=markup), text)
 
 
 def actor(event: Event) -> Message:

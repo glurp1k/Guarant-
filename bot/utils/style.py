@@ -51,3 +51,20 @@ def block(*parts: str) -> str:
 def note(icon: str, text: str) -> str:
     """Сноска внизу сообщения."""
     return f"{icon} {text}" if icon else text
+
+
+def bold(value: object) -> str:
+    return f"<b>{value}</b>"
+
+
+def bullets(rows: Sequence[tuple[str, object]]) -> str:
+    """Строки списком: `• Подпись: значение`. Пустые значения пропускаем."""
+    items = [(label, value) for label, value in rows if value not in (None, "")]
+    return "\n".join(f"• {label}: {value}" for label, value in items)
+
+
+def section(icon: str, heading: str, rows: Sequence[tuple[str, object]]) -> str:
+    """Раздел профиля: иконка, жирный заголовок, под ним список."""
+    body = bullets(rows)
+    head = title(icon, heading)
+    return f"{head}\n{body}" if body else head

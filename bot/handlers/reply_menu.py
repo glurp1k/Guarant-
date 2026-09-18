@@ -9,6 +9,7 @@ from __future__ import annotations
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.db.models import User
 from bot.filters_reply import ReplyButton
@@ -44,10 +45,10 @@ async def open_check(message: Message, state: FSMContext) -> None:
 
 
 @router.message(ReplyButton(rkb.PROFILE))
-async def open_profile(message: Message, user: User, state: FSMContext) -> None:
+async def open_profile(message: Message, session: AsyncSession, user: User, state: FSMContext) -> None:
     from bot.handlers.common import render_profile
 
-    await render_profile(message, user, state)
+    await render_profile(message, session, user, state)
 
 
 @router.message(ReplyButton(rkb.INFO))

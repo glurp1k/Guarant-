@@ -19,12 +19,32 @@ def floor2(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_DOWN)
 
 
-def fmt(value: Decimal | int | float, asset: str = "USDT") -> str:
-    """`12.5` → `12.50 USDT`."""
+def plain(value: Decimal | int | float) -> str:
+    """Голое число с двумя знаками, без символа валюты."""
     if not isinstance(value, Decimal):
         value = Decimal(str(value))
-    text = f"{q2(value):.2f}"
-    return f"{text} {asset}" if asset else text
+    return f"{q2(value):.2f}"
+
+
+def fmt(value: Decimal | int | float) -> str:
+    """Сумма в оформлении из админки: `$ 12,50` или `12.50 USDT`.
+
+    Символ, его сторона и разделитель дробной части настраиваются
+    в разделе «Основное». Импорт настроек внутри функции — чтобы
+    utils не зависел от services на уровне модуля.
+    """
+    from bot.services.settings import settings
+
+    text = plain(value)
+    if settings.get_bool("currency_comma"):
+        text = text.replace(".", ",")
+
+    symbol = settings.get("currency_symbol").strip()
+    if not symbol:
+        return text
+    if settings.get("currency_position").strip() == "after":
+        return f"{text} {symbol}"
+    return f"{symbol} {text}"
 
 
 def parse_amount(text: str) -> Decimal | None:
