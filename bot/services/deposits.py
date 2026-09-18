@@ -16,9 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.db.models import Account, Deal, DealStatus, TxKind, User
 from bot.services import ledger
 from bot.services.settings import settings
-from bot.utils.money import ZERO, floor2, fmt, q2
-from bot.utils.style import block, mono, note, title, tree
-from bot.utils.texts import esc, fmt_date
+from bot.utils.money import ZERO, floor2, q2
 
 
 class DepositError(Exception):
@@ -139,34 +137,3 @@ def trust_label(user: User) -> str:
     if threshold > ZERO and user.deposit >= threshold:
         return "надёжный"
     return "есть депозит" if user.deposit > ZERO else "без депозита"
-
-
-def build_card(user: User) -> str:
-    """Публичная карточка пользователя. Состав полей задаётся в админке."""
-    identity = [
-        ("Имя", esc(user.full_name) or "—"),
-        ("Юзернейм", mono(f"@{esc(user.username)}") if user.username else "—"),
-        ("ID", mono(user.tg_id)),
-    ]
-    if settings.get_bool("check_show_registered"):
-        identity.append(("В сервисе с", fmt_date(user.created_at)))
-
-    guarantees: list[tuple[str, object]] = []
-    if settings.get_bool("check_show_deposit"):
-        guarantees.append(("Страховой депозит", mono(fmt(user.deposit))))
-    if settings.get_bool("reviews_show_in_check"):
-        guarantees.append(("Отзывы (+ / −)", mono(user.reputation)))
-    if settings.get_bool("check_show_deals"):
-        guarantees.append(("Закрытых сделок", mono(user.deals_done)))
-        guarantees.append(("Оборот", mono(fmt(user.deals_volume))))
-
-    parts = [
-        title("🔍", "Проверка пользователя") + "\n" + tree(identity),
-        trust_badge(user),
-    ]
-    if guarantees:
-        parts.append(title("🛡", "Гарантии") + "\n" + tree(guarantees))
-    if user.is_banned and user.ban_reason:
-        parts.append(note("⚠️", f"Причина блокировки: {esc(user.ban_reason)}"))
-
-    return block(*parts)

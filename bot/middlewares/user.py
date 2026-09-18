@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, Message, TelegramObject, User as TgUser
 
 from bot.services import users as users_service
 from bot.services.settings import settings
+from bot.services.templates import templates
 from bot.utils.texts import esc
 
 
@@ -39,7 +40,7 @@ class UserMiddleware(BaseMiddleware):
             return None
 
         if settings.get_bool("maintenance") and not user.is_admin:
-            await self._reject(event, settings.get("maintenance_text"))
+            await self._reject(event, templates.text("maintenance"))
             return None
 
         return await handler(event, data)

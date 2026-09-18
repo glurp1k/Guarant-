@@ -15,6 +15,7 @@ from bot.keyboards.callbacks import ReviewCB
 from bot.services import reviews as reviews_service
 from bot.services.reviews import ReviewError
 from bot.services.settings import settings
+from bot.services.templates import templates
 from bot.states import ReviewSG
 from bot.utils.render import show
 from bot.utils.style import block, note, title
@@ -31,15 +32,12 @@ async def offer(bot: Bot, deal: Deal, user_id: int | None) -> None:
     if not settings.get_bool("reviews_ask_after_deal"):
         return
 
+    text, photo = templates.render("review_ask", code=deal.code)
     try:
-        await bot.send_message(
-            user_id,
-            block(
-                title(settings.get("icon_reviews"), f"Сделка {deal.code} закрыта"),
-                "Оцените вторую сторону — отзыв увидят все, кто будет её проверять.",
-            ),
-            reply_markup=kb.review_ask(deal.id),
-        )
+        if photo:
+            await bot.send_photo(user_id, photo, caption=text, reply_markup=kb.review_ask(deal.id))
+        else:
+            await bot.send_message(user_id, text, reply_markup=kb.review_ask(deal.id))
     except Exception as exc:  # noqa: BLE001 - пользователь мог заблокировать бота
         log.debug("Предложение отзыва не доставлено %s: %s", user_id, exc)
 

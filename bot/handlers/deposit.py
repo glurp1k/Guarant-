@@ -11,49 +11,30 @@ from bot.db.models import User
 from bot.keyboards import user as kb
 from bot.keyboards.callbacks import DepositCB
 from bot.services import deposits
+from bot.services.placeholders import user_values
 from bot.services.deposits import DepositError
 from bot.services.settings import settings
 from bot.states import DepositSG
 from bot.utils.money import ZERO, fmt, parse_amount
-from bot.utils.render import Event, deny, show
+from bot.utils.render import Event, deny, screen
 from bot.utils.texts import fmt_date
 
 router = Router(name="deposit")
-
-
-def deposit_text(user: User) -> str:
-    lines = [settings.get("text_deposit_info"), "", f"🛡 Ваш депозит: <b>{fmt(user.deposit)}</b>"]
-
-    unlock_at = deposits.locked_until(user)
-    if unlock_at is not None:
-        lines.append(f"🔒 Заморожен до {fmt_date(unlock_at)} UTC")
-
-    threshold = settings.get_decimal("check_trusted_from")
-    if threshold > ZERO:
-        if user.deposit >= threshold:
-            lines.append("✅ Статус: <b>надёжный</b>")
-        else:
-            need = threshold - user.deposit
-            lines.append(f"До статуса «надёжный» не хватает <b>{fmt(need)}</b>")
-
-    minimum = settings.get_decimal("deposit_min")
-    maximum = settings.get_decimal("deposit_max")
-    limits = []
-    if minimum > ZERO:
-        limits.append(f"минимум {fmt(minimum)}")
-    if maximum > ZERO:
-        limits.append(f"максимум {fmt(maximum)}")
-    if limits:
-        lines += ["", "Ограничения: " + ", ".join(limits)]
-
-    return "\n".join(lines)
 
 
 async def render_deposit_menu(event: Event, user: User) -> None:
     if not settings.get_bool("deposit_enabled"):
         await deny(event, "Страховой депозит сейчас отключён")
         return
-    await show(event, deposit_text(user), kb.deposit_menu(user.deposit > ZERO))
+
+    unlock_at = deposits.locked_until(user)
+    await screen(
+        event, "deposit", kb.deposit_menu(user.deposit > ZERO),
+        **user_values(user),
+        min=fmt(settings.get_decimal("deposit_min")),
+        max=fmt(settings.get_decimal("deposit_max")),
+        locked_until=fmt_date(unlock_at) if unlock_at else "—",
+    )
 
 
 @router.callback_query(DepositCB.filter(F.action == "menu"))

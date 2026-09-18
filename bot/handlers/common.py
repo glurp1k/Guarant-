@@ -15,12 +15,12 @@ from bot.keyboards import reply as rkb
 from bot.keyboards import user as kb
 from bot.keyboards.callbacks import MenuCB
 from bot.services import deals as deals_service
-from bot.services import deposits, ledger
-from bot.services.settings import settings
-from bot.utils.money import fmt
-from bot.utils.render import Event, reply, show
-from bot.utils.style import block, bold, mono, note, section, title
-from bot.utils.texts import esc, fmt_date
+from bot.services import ledger
+from bot.services.placeholders import user_values
+from bot.services.templates import templates
+from bot.utils.render import Event, reply, screen, show
+from bot.utils.style import block, title
+from bot.utils.texts import fmt_date
 
 log = logging.getLogger(__name__)
 router = Router(name="common")
@@ -40,73 +40,32 @@ KIND_TITLES = {
 }
 
 
-def greeting(user: User) -> str:
-    return settings.get("text_start").replace("{name}", esc(user.full_name or "друг"))
-
-
-def profile_text(user: User, stats: deals_service.DealStats) -> str:
-    """Профиль по макету: разделы с иконкой и строки списком.
-
-    Иконки берутся из админки, поэтому вместо обычного эмодзи там может
-    стоять премиум — оно хранится тегом <tg-emoji> и так и отдаётся.
-    """
-    icon = settings.get
-
-    parts = [
-        section(icon("icon_info"), "Информация", [
-            ("Никнейм", bold(f"@{esc(user.username)}") if user.username else "—"),
-            ("ID", mono(user.tg_id)),
-            ("Кол-во сделок", bold(stats.total)),
-        ]),
-        section(icon("icon_reputation"), "Репутация", [
-            ("Депозит", bold(fmt(user.deposit))) if settings.get_bool("deposit_enabled") else ("", ""),
-            ("Отзывы (+ / −)", bold(user.reputation)) if settings.get_bool("reviews_show_in_profile") else ("", ""),
-            ("Статус", bold(deposits.trust_label(user))),
-            ("Дата регистрации", bold(fmt_date(user.created_at, with_time=False))),
-        ]),
-        section(icon("icon_stats"), "Статистика сделок", [
-            (f"Сделки ({stats.total})", bold(fmt(stats.volume))),
-            (f"Покупатель ({stats.as_buyer})", bold(fmt(stats.buyer_volume))),
-            (f"Продавец ({stats.as_seller})", bold(fmt(stats.seller_volume))),
-        ]),
-        section(icon("icon_finance"), "Финансы", [
-            ("Баланс", bold(fmt(user.balance))),
-        ]),
-    ]
-
-    unlock_at = deposits.locked_until(user)
-    if unlock_at is not None:
-        parts.append(note("🔒", f"Депозит заморожен до {fmt_date(unlock_at)} UTC"))
-
-    return block(*parts)
-
-
 # --------------------------------------------------------------------------- #
-# Экраны. Каждый открывается и с инлайн-кнопки, и с нижней клавиатуры.
+# Экраны. Текст и картинка каждого правятся в админке, здесь — только данные.
 # --------------------------------------------------------------------------- #
 
 
 async def render_main(event: Event, user: User, state: FSMContext) -> None:
     await state.clear()
-    await show(event, greeting(user), kb.main_menu(user.is_admin))
+    await screen(event, "start", kb.main_menu(user.is_admin), **user_values(user))
 
 
 async def render_profile(event: Event, session: AsyncSession, user: User, state: FSMContext) -> None:
     await state.clear()
     stats = await deals_service.stats_for(session, user.tg_id)
-    await show(event, profile_text(user, stats), kb.profile_menu())
+    await screen(event, "profile", kb.profile_menu(), **user_values(user, stats))
 
 
 async def render_info(event: Event) -> None:
-    await show(event, settings.get("text_info"), kb.info_menu())
+    await screen(event, "info", kb.info_menu())
 
 
 async def render_rules(event: Event) -> None:
-    await show(event, settings.get("text_rules"), kb.back_only())
+    await screen(event, "rules", kb.back_only())
 
 
 async def render_projects(event: Event) -> None:
-    await show(event, settings.get("text_projects"), kb.back_only())
+    await screen(event, "projects", kb.back_only())
 
 
 async def render_history(event: Event, session: AsyncSession, user: User) -> None:
@@ -133,7 +92,8 @@ async def render_history(event: Event, session: AsyncSession, user: User) -> Non
 
 async def greet(message: Message, user: User) -> None:
     """Приветствие вместе с постоянной клавиатурой внизу экрана."""
-    await reply(message, greeting(user), rkb.main_keyboard(user.is_admin))
+    text, photo = templates.render("start", **user_values(user))
+    await reply(message, text, rkb.main_keyboard(user.is_admin), photo=photo)
 
 
 @router.message(CommandStart(deep_link=True))

@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.db.models import User
-from bot.keyboards.callbacks import AdminCB, AdminItemCB, MenuCB, SettingCB
+from bot.keyboards.callbacks import AdminCB, AdminItemCB, MenuCB, SettingCB, TemplateCB
 from bot.services.settings import CATEGORIES, DEFS_BY_KEY, SettingDef, settings
 
 PAGE_SIZE = 8
@@ -15,6 +15,7 @@ PAGE_SIZE = 8
 def admin_main() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(text="🛠 Настройки", callback_data=SettingCB(action="categories"))
+    builder.button(text="✉️ Сообщения", callback_data=TemplateCB(action="categories"))
     builder.button(text="📊 Статистика", callback_data=AdminCB(action="stats"))
     builder.button(text="📤 Заявки на вывод", callback_data=AdminCB(action="withdrawals"))
     builder.button(text="⚖️ Споры", callback_data=AdminCB(action="disputes"))
@@ -23,7 +24,7 @@ def admin_main() -> InlineKeyboardMarkup:
     builder.button(text="📣 Рассылка", callback_data=AdminCB(action="broadcast"))
     builder.button(text="🔌 Проверить API", callback_data=AdminCB(action="healthcheck"))
     builder.button(text="⬅️ В меню", callback_data=MenuCB(action="main"))
-    builder.adjust(2, 2, 2, 2, 1)
+    builder.adjust(2, 2, 2, 2, 1, 1)
     return builder.as_markup()
 
 
@@ -159,4 +160,58 @@ def confirm_broadcast() -> InlineKeyboardMarkup:
     builder.button(text="📣 Отправить всем", callback_data=AdminItemCB(action="broadcast_go"))
     builder.button(text="❌ Отмена", callback_data=AdminCB(action="menu"))
     builder.adjust(1)
+    return builder.as_markup()
+
+
+# --------------------------------------------------------------------------- #
+# Сообщения
+# --------------------------------------------------------------------------- #
+
+
+def template_categories() -> InlineKeyboardMarkup:
+    from bot.services.templates import CATEGORIES as TPL_CATEGORIES
+
+    builder = InlineKeyboardBuilder()
+    for key, title in TPL_CATEGORIES.items():
+        builder.button(text=title, callback_data=TemplateCB(action="list", category=key))
+    builder.button(text="⬅️ В админку", callback_data=AdminCB(action="menu"))
+    builder.adjust(2, 2, 1, 1)
+    return builder.as_markup()
+
+
+def template_list(category: str, items, page: int = 0) -> InlineKeyboardMarkup:
+    from bot.services.templates import templates as tpl
+
+    builder = InlineKeyboardBuilder()
+    start = page * PAGE_SIZE
+    for definition in items[start:start + PAGE_SIZE]:
+        builder.button(
+            text=f"{definition.title} · {tpl.preview(definition.key)}",
+            callback_data=TemplateCB(action="open", category=category, key=definition.key, page=page),
+        )
+    builder.adjust(1)
+
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(
+            text="◀️", callback_data=TemplateCB(action="list", category=category, page=page - 1).pack()))
+    if start + PAGE_SIZE < len(items):
+        nav.append(InlineKeyboardButton(
+            text="▶️", callback_data=TemplateCB(action="list", category=category, page=page + 1).pack()))
+    if nav:
+        builder.row(*nav)
+
+    builder.row(InlineKeyboardButton(
+        text="⬅️ К разделам", callback_data=TemplateCB(action="categories").pack()))
+    return builder.as_markup()
+
+
+def template_card(key: str, category: str, page: int = 0) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✏️ Изменить", callback_data=TemplateCB(action="edit", category=category, key=key, page=page))
+    builder.button(text="👁 Показать как есть",
+                   callback_data=TemplateCB(action="preview", category=category, key=key, page=page))
+    builder.button(text="♻️ Сбросить", callback_data=TemplateCB(action="reset", category=category, key=key, page=page))
+    builder.button(text="⬅️ Назад", callback_data=TemplateCB(action="list", category=category, page=page))
+    builder.adjust(2, 1, 1)
     return builder.as_markup()

@@ -18,6 +18,7 @@ from bot.services.settings import settings
 from bot.services.withdrawals import WithdrawError
 from bot.states import WithdrawSG
 from bot.utils.money import ZERO, fmt, parse_amount
+from bot.utils.render import screen
 from bot.utils.texts import esc
 
 log = logging.getLogger(__name__)
@@ -65,7 +66,6 @@ async def withdraw_menu(call: CallbackQuery, callback_data: WithdrawCB, user: Us
 
     source = Account(callback_data.source)
     available = _available(user, source)
-    where = "депозита" if source is Account.DEPOSIT else "баланса"
 
     minimum = settings.get_decimal("withdraw_min")
     maximum = settings.get_decimal("withdraw_max")
@@ -75,17 +75,13 @@ async def withdraw_menu(call: CallbackQuery, callback_data: WithdrawCB, user: Us
     if maximum > ZERO:
         limits.append(f"максимум {fmt(maximum)}")
 
-    text = [
-        f"📤 <b>Вывод {where}</b>",
-        "",
-        f"Доступно: <b>{fmt(available)}</b>",
-    ]
-    if limits:
-        text.append("Лимиты: " + ", ".join(limits))
-    text += ["", "<b>Комиссии:</b>", _fees_overview(source), "", "Выберите способ вывода:"]
-
-    await call.message.edit_text("\n".join(text), reply_markup=kb.withdraw_methods(source.value))
-    await call.answer()
+    await screen(
+        call, "withdraw_menu", kb.withdraw_methods(source.value),
+        source="депозита" if source is Account.DEPOSIT else "баланса",
+        available=fmt(available),
+        limits=", ".join(limits) or "без ограничений",
+        fees=_fees_overview(source),
+    )
 
 
 @router.callback_query(WithdrawCB.filter(F.action == "method"))

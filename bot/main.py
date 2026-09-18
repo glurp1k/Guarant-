@@ -20,6 +20,7 @@ from bot.middlewares import DbSessionMiddleware, UserMiddleware
 from bot.session import build_session
 from bot.services import deals as deals_service
 from bot.services.settings import settings
+from bot.services.templates import templates
 from bot.services.watcher import run_watcher
 
 log = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ async def main() -> None:
     await init_db()
     async with session_scope() as session:
         await settings.load(session)
+        await templates.load(session)
 
     bot = Bot(
         token=config.bot_token,

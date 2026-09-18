@@ -140,6 +140,22 @@ class Setting(Base):
     updated_by: Mapped[int | None] = mapped_column(BigInteger)
 
 
+class Template(Base):
+    """Сообщение бота, которое правится из админки целиком.
+
+    Хранится готовый HTML — так переживают и форматирование, и премиум-эмодзи.
+    Фото лежит как file_id: Telegram позволяет пересылать его без перезагрузки.
+    """
+
+    __tablename__ = "templates"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    text: Mapped[str] = mapped_column(Text, default="")
+    photo_id: Mapped[str | None] = mapped_column(String(256))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_by: Mapped[int | None] = mapped_column(BigInteger)
+
+
 class Invoice(Base):
     """Счёт на пополнение баланса или страхового депозита."""
 

@@ -15,36 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from bot.keyboards import user as kb
 from bot.keyboards.callbacks import MenuCB
 from bot.services import deposits, users as users_service
+from bot.services.placeholders import user_values
+from bot.services.templates import templates
 from bot.services.settings import settings
 from bot.states import CheckSG
-from bot.utils.render import Event, deny, reply, show
-from bot.utils.style import block, mono, note, title, tree
+from bot.utils.render import Event, deny, reply, screen
 from bot.utils.texts import esc
 
 router = Router(name="check")
-
-PROMPT = block(
-    title("🔍", "Проверка пользователя.", "Найти человека можно по любому из параметров:")
-    + "\n"
-    + tree([
-        ("ID", mono("8561401973")),
-        ("Юзернейм", mono("GreedyHatesAI")),
-        ("Юзернейм (полный)", mono("@GreedyHatesAI")),
-        ("Юзернейм (ссылка)", mono("https://t.me/GreedyHatesAI")),
-    ]),
-    note("📖", "<b>Регистр не важен.</b> При поиске нет разницы между "
-               "<code>UserName</code> и <code>username</code>."),
-)
-
-
-def not_found(query: str) -> str:
-    return block(
-        title("❌", "Пользователь не найден"),
-        f"По запросу {mono(esc(query))} в сервисе никого нет — значит, "
-        f"ни страхового депозита, ни истории сделок у него тоже нет.",
-        note("⚠️", "Будьте осторожны и работайте только через гаранта."),
-    )
-
 
 async def render_check_prompt(event: Event, state: FSMContext) -> None:
     if not settings.get_bool("check_enabled"):
@@ -52,7 +30,7 @@ async def render_check_prompt(event: Event, state: FSMContext) -> None:
         return
 
     await state.set_state(CheckSG.username)
-    await show(event, PROMPT, kb.cancel())
+    await screen(event, "check_prompt", kb.cancel())
 
 
 async def _reply_card(message: Message, session: AsyncSession, raw: str) -> None:
@@ -60,10 +38,14 @@ async def _reply_card(message: Message, session: AsyncSession, raw: str) -> None
     target = await users_service.find_any(session, query)
 
     if target is None:
-        await reply(message, not_found(query[:64] or "—"), kb.cancel())
+        text, photo = templates.render("check_not_found", query=esc(query[:64]) or "—")
+        await reply(message, text, kb.cancel(), photo=photo)
         return
 
-    await reply(message, deposits.build_card(target), kb.back_only())
+    values = user_values(target)
+    values["status_line"] = deposits.trust_badge(target)
+    text, photo = templates.render("check_found", **values)
+    await reply(message, text, kb.back_only(), photo=photo)
 
 
 @router.callback_query(MenuCB.filter(F.action == "check"))

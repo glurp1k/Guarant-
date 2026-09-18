@@ -35,6 +35,7 @@ class CheckSG(StatesGroup):
 
 class AdminSG(StatesGroup):
     setting_value = State()
+    template = State()
     user_query = State()
     amount_delta = State()
     ban_reason = State()

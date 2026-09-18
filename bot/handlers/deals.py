@@ -17,6 +17,7 @@ from bot.keyboards.callbacks import DealCB
 from bot.services import deals as deals_service
 from bot.services.deals import DealError
 from bot.services.settings import settings
+from bot.services.templates import templates
 from bot.states import DealSG
 from bot.utils.money import fmt, parse_amount
 from bot.utils.render import Event, show
@@ -56,36 +57,30 @@ async def _share_url(bot: Bot, deal: Deal) -> str:
     return f"https://t.me/{me.username}?start=deal_{deal.code}"
 
 
+def deal_values(deal: Deal, viewer_id: int | None = None, share_url: str | None = None) -> dict[str, object]:
+    """Поля карточки сделки для шаблона."""
+    return {
+        "code": deal.code,
+        "status": STATUS_TITLES.get(deal.status, deal.status),
+        "amount": fmt(deal.amount),
+        "commission": fmt(deal.commission),
+        "payer": PAYER_TITLES.get(deal.commission_payer, "—"),
+        "seller": esc(deal.seller.mention) if deal.seller else "—",
+        "buyer": esc(deal.buyer.mention) if deal.buyer else "—",
+        "description": esc(deal.description) or "—",
+        "link": share_url or "—",
+        "payout": fmt(deal.seller_payout),
+        "charge": fmt(deal.buyer_charge),
+        "dispute": esc(deal.dispute_reason) if deal.dispute_reason else "",
+    }
+
+
 def deal_text(deal: Deal, viewer_id: int | None = None, share_url: str | None = None) -> str:
-    seller = deal.seller.mention if deal.seller else "—"
-    buyer = deal.buyer.mention if deal.buyer else "—"
-
-    lines = [
-        f"🤝 <b>Сделка {deal.code}</b>",
-        "",
-        f"Статус: {STATUS_TITLES.get(deal.status, deal.status)}",
-        f"Сумма: <b>{fmt(deal.amount)}</b>",
-        f"Комиссия: <b>{fmt(deal.commission)}</b> (платит {PAYER_TITLES.get(deal.commission_payer, '—')})",
-        "",
-        f"🛍 Продавец: {esc(seller)}",
-        f"💵 Покупатель: {esc(buyer)}",
-    ]
-
-    if deal.description:
-        lines += ["", f"📝 Предмет сделки:\n{esc(deal.description)}"]
-
-    if viewer_id is not None and viewer_id == deal.buyer_id:
-        lines += ["", f"К оплате с вашего баланса: <b>{fmt(deal.buyer_charge)}</b>"]
-    if viewer_id is not None and viewer_id == deal.seller_id:
-        lines += ["", f"Вы получите: <b>{fmt(deal.seller_payout)}</b>"]
-
-    if deal.dispute_reason:
-        lines += ["", f"⚖️ Причина спора: {esc(deal.dispute_reason)}"]
-
+    """Готовая карточка — шаблон правится в админке."""
+    text, _ = templates.render("deal_card", **deal_values(deal, viewer_id, share_url))
     if share_url:
-        lines += ["", "🔗 Ссылка для второй стороны:", f"<code>{share_url}</code>"]
-
-    return "\n".join(lines)
+        text += f"\n\n🔗 Ссылка для второй стороны:\n<code>{share_url}</code>"
+    return text
 
 
 def _card_markup(deal: Deal, viewer: User, share_url: str | None = None) -> object:

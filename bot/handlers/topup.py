@@ -15,59 +15,50 @@ from bot.keyboards.callbacks import TopupCB
 from bot.services import payments
 from bot.services.payments import PaymentError
 from bot.services.settings import settings
+from bot.services.templates import templates
 from bot.states import TopupSG
 from bot.utils.money import ZERO, fmt, parse_amount
+from bot.utils.render import reply, screen
 from bot.utils.texts import esc, fmt_date
 
 log = logging.getLogger(__name__)
 router = Router(name="topup")
 
 
-def _limits_text(purpose: Account) -> str:
+def _limits(purpose: Account) -> dict[str, object]:
     if purpose is Account.DEPOSIT:
-        minimum = settings.get_decimal("deposit_min")
-        maximum = settings.get_decimal("deposit_max")
-        head = "🛡 <b>Пополнение страхового депозита</b>"
+        minimum, maximum = settings.get_decimal("deposit_min"), settings.get_decimal("deposit_max")
     else:
-        minimum = settings.get_decimal("topup_min")
-        maximum = settings.get_decimal("topup_max")
-        head = "💳 <b>Пополнение баланса</b>"
+        minimum, maximum = settings.get_decimal("topup_min"), settings.get_decimal("topup_max")
+    return {
+        "min": fmt(minimum) if minimum > ZERO else "без ограничений",
+        "max": fmt(maximum) if maximum > ZERO else "без ограничений",
+    }
 
-    lines = [head, ""]
-    if minimum > ZERO:
-        lines.append(f"Минимум: <b>{fmt(minimum)}</b>")
-    if maximum > ZERO:
-        lines.append(f"Максимум: <b>{fmt(maximum)}</b>")
-    lines += ["", "Выберите способ оплаты:"]
-    return "\n".join(lines)
+
+def invoice_values(invoice: Invoice) -> dict[str, object]:
+    method = PayMethod(invoice.method)
+    return {
+        "id": invoice.id,
+        "network": payments.method_title(method),
+        "address": esc(invoice.address or "—"),
+        "amount": f"{invoice.pay_amount:.6f}" if method is not PayMethod.CRYPTOBOT else fmt(invoice.pay_amount),
+        "expires": fmt_date(invoice.expires_at),
+        "target": "депозита" if invoice.purpose == Account.DEPOSIT.value else "баланса",
+    }
+
+
+def invoice_template(invoice: Invoice) -> str:
+    return "invoice_cryptobot" if invoice.method == PayMethod.CRYPTOBOT.value else "invoice_crypto"
 
 
 def invoice_text(invoice: Invoice) -> str:
-    method = PayMethod(invoice.method)
-    target = "страхового депозита" if invoice.purpose == Account.DEPOSIT.value else "баланса"
-
-    if method is PayMethod.CRYPTOBOT:
-        return (
-            f"🧾 <b>Счёт #{invoice.id}</b> на пополнение {target}\n\n"
-            f"Сумма: <b>{fmt(invoice.pay_amount)}</b>\n"
-            f"Способ: CryptoBot\n"
-            f"Действует до: {fmt_date(invoice.expires_at)} UTC\n\n"
-            f"Нажмите «Оплатить», средства зачислятся автоматически."
-        )
-
-    return (
-        f"🧾 <b>Счёт #{invoice.id}</b> на пополнение {target}\n\n"
-        f"Сеть: <b>{payments.method_title(method)}</b>\n"
-        f"Адрес:\n<code>{esc(invoice.address)}</code>\n\n"
-        f"Сумма к отправке (ровно):\n<code>{invoice.pay_amount:.6f}</code>\n\n"
-        f"⚠️ Отправьте <b>точную</b> сумму — по ней бот опознает ваш платёж.\n"
-        f"Счёт действует до {fmt_date(invoice.expires_at)} UTC.\n"
-        f"Зачисление — после подтверждения сети."
-    )
+    text, _ = templates.render(invoice_template(invoice), **invoice_values(invoice))
+    return text
 
 
 @router.callback_query(TopupCB.filter(F.action == "choose"))
-async def choose_method(call: CallbackQuery, callback_data: TopupCB, state: FSMContext) -> None:
+async def choose_method(call: CallbackQuery, callback_data: TopupCB, user: User, state: FSMContext) -> None:
     await state.clear()
     purpose = Account(callback_data.purpose)
 
@@ -75,8 +66,8 @@ async def choose_method(call: CallbackQuery, callback_data: TopupCB, state: FSMC
         await call.answer("Пополнение сейчас недоступно", show_alert=True)
         return
 
-    await call.message.edit_text(_limits_text(purpose), reply_markup=kb.pay_methods(purpose.value))
-    await call.answer()
+    await screen(call, "topup_choose", kb.pay_methods(purpose.value),
+                 **_limits(purpose), balance=fmt(user.balance), deposit=fmt(user.deposit))
 
 
 @router.callback_query(TopupCB.filter(F.action == "method"))
@@ -116,7 +107,8 @@ async def create_invoice(message: Message, session: AsyncSession, user: User, st
         return
 
     await state.clear()
-    await message.answer(invoice_text(invoice), reply_markup=kb.invoice_actions(invoice.id, invoice.pay_url))
+    text, photo = templates.render(invoice_template(invoice), **invoice_values(invoice))
+    await reply(message, text, kb.invoice_actions(invoice.id, invoice.pay_url), photo=photo)
 
 
 @router.callback_query(TopupCB.filter(F.action == "check"))

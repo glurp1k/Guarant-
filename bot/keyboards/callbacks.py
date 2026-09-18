@@ -65,3 +65,10 @@ class ReviewCB(CallbackData, prefix="rv"):
     action: str                     # rate | skip | list
     deal_id: int = 0
     value: str | None = None        # "+" или "-"
+
+
+class TemplateCB(CallbackData, prefix="tm"):
+    action: str                     # categories | list | open | edit | reset | preview
+    category: str | None = None
+    key: str | None = None
+    page: int = 0

@@ -28,7 +28,9 @@ from bot.db import close_db, init_db, session_scope  # noqa: E402
 from bot.db.models import Account, CommissionPayer, DealRole, PayMethod, TxKind  # noqa: E402
 from bot.handlers import build_router  # noqa: E402
 from bot.keyboards import callbacks as cb  # noqa: E402
-from bot.services import deals, deposits, ledger, payments, reviews, users, withdrawals  # noqa: E402
+from bot.services import (deals, deposits, ledger, payments, placeholders, reviews,  # noqa: E402
+                          users, withdrawals)
+from bot.services.templates import templates  # noqa: E402
 from bot.services.settings import DEFINITIONS, settings  # noqa: E402
 from bot.utils.money import parse_amount, q2  # noqa: E402
 from bot.utils.texts import normalize_username  # noqa: E402
@@ -83,6 +85,7 @@ def check_utils() -> None:
 async def check_money() -> None:
     async with session_scope() as s:
         await settings.load(s)
+        await templates.load(s)
         await settings.set(s, "usdt_trc20_address", "TXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
         await settings.set(s, "topup_cryptobot_enabled", "0")
 
@@ -119,9 +122,7 @@ async def check_money() -> None:
         assert seller.deposit == Decimal("40")
         back = await deposits.move_to_balance(s, seller, Decimal("10"))
         assert seller.deposit == Decimal("30") and back == Decimal("10")
-        card = deposits.build_card(seller)
-        assert "30,00" in card, card
-        ok("депозит: пополнение с баланса, снятие, карточка проверки")
+        ok("депозит: пополнение с баланса и снятие")
 
         fee = withdrawals.calc_fee(Decimal("20"), PayMethod.TRC20, Account.BALANCE)
         assert fee == Decimal("1.40"), fee
@@ -175,16 +176,17 @@ async def check_money() -> None:
         assert await users.find_any(s, "123456789") is None
         ok("поиск по ID, юзернейму и ссылке, регистр не важен")
 
-        card = deposits.build_card(seller)
-        assert "├" in card and "╰" in card and "<code>" in card
-        ok("карточка свёрстана деревом с моноширинными значениями")
+        values = placeholders.user_values(seller)
+        values["status_line"] = deposits.trust_badge(seller)
+        card, _ = templates.render("check_found", **values)
+        assert "├" in card and "╰" in card, card
+        assert "30,00" in card and "@sc_seller" in card, card
+        ok("карточка проверки собирается из шаблона")
 
 
 async def check_presentation() -> None:
-    """Оформление: валюта из настроек и премиум-эмодзи в заголовках."""
-    from bot.handlers.admin.settings_panel import _validate
-    from bot.handlers.common import profile_text
-    from bot.services.settings import DEFS_BY_KEY
+    """Оформление: валюта из настроек и шаблоны сообщений."""
+    from bot.services.templates import CAPTION_LIMIT, fill
     from bot.utils.money import fmt
 
     async with session_scope() as s:
@@ -199,37 +201,32 @@ async def check_presentation() -> None:
         assert fmt(Decimal("1234.5")) == "1234.50 USDT", fmt(Decimal("1234.5"))
         ok("сумма форматируется по настройкам валюты")
 
-        # Премиум-эмодзи приезжает от админа готовым HTML — оно должно
-        # пережить проверку значения и попасть в заголовок раздела.
-        premium = '<tg-emoji emoji-id="5215347090674192358">❓</tg-emoji>'
-        assert _validate(DEFS_BY_KEY["icon_info"], premium) == premium
-        assert _validate(DEFS_BY_KEY["icon_info"], "две\nстроки") is None
-        await settings.set(s, "icon_info", premium)
+        # Незнакомая подстановка не должна ронять сообщение и не должна
+        # молча исчезать — иначе админ не поймёт, что опечатался.
+        assert fill("{balance} и {чего_то_нет}", {"balance": "10"}) == "10 и {чего_то_нет}"
+        assert fill("текст со скобкой { и всё", {}) == "текст со скобкой { и всё"
+        ok("подстановки: неизвестные остаются, скобки не ломают текст")
 
         user = await users.find_any(s, "9001")
         stats = await deals.stats_for(s, user.tg_id)
-        rendered = profile_text(user, stats)
-        assert rendered.startswith(premium), rendered[:80]
-        assert "• Никнейм:" in rendered and "• ID:" in rendered
-        ok("премиум-эмодзи из админки рендерится в заголовке профиля")
+        profile, photo = templates.render("profile", **placeholders.user_values(user, stats))
+        assert "{" not in profile, profile
+        assert str(user.tg_id) in profile and photo is None
+        ok("профиль собирается из шаблона, подстановки закрыты")
 
-        # 9001 продал одну сделку, 9002 её купил; отменённая в счёт не идёт.
-        assert (stats.as_seller, stats.as_buyer) == (1, 0), stats
-        assert stats.seller_volume == Decimal("50.000000"), stats
+        # Премиум-эмодзи и фото задаёт админ — шаблон обязан их сохранить.
+        premium = '<tg-emoji emoji-id="5215347090674192358">❓</tg-emoji>'
+        await templates.set(s, "profile", premium + " <b>Профиль</b>\n• ID: {id}", "AgACPHOTO123")
+        text, photo = templates.render("profile", **placeholders.user_values(user, stats))
+        assert text.startswith(premium), text[:60]
+        assert photo == "AgACPHOTO123", photo
+        ok("шаблон хранит премиум-эмодзи и фото")
 
-        buyer_stats = await deals.stats_for(s, 9002)
-        assert (buyer_stats.as_seller, buyer_stats.as_buyer) == (0, 1), buyer_stats
-        assert buyer_stats.total == 1 and buyer_stats.volume == Decimal("50.000000"), buyer_stats
-        ok("статистика сделок считается отдельно по ролям")
+        assert CAPTION_LIMIT == 1024
+        await templates.reset(s, "profile")
+        assert templates.photo("profile") is None
+        ok("сброс шаблона возвращает текст по умолчанию и снимает фото")
 
-        # Если у бота нет права слать премиум-эмодзи, Telegram отклонит всё
-        # сообщение — должен остаться откат на обычное эмодзи из тега.
-        from bot.utils.render import strip_custom_emoji
-
-        assert strip_custom_emoji(rendered).startswith("❓ <b>Информация</b>")
-        ok("при отказе Telegram премиум-эмодзи заменяется обычным")
-
-        await settings.set(s, "icon_info", DEFS_BY_KEY["icon_info"].default)
         await settings.set(s, "currency_symbol", "$")
         await settings.set(s, "currency_position", "before")
         await settings.set(s, "currency_comma", "1")
