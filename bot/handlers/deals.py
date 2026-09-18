@@ -19,6 +19,7 @@ from bot.services.deals import DealError
 from bot.services.settings import settings
 from bot.states import DealSG
 from bot.utils.money import fmt, parse_amount
+from bot.utils.render import Event, show
 from bot.utils.texts import esc
 
 log = logging.getLogger(__name__)
@@ -104,16 +105,20 @@ def _card_markup(deal: Deal, viewer: User, share_url: str | None = None) -> obje
 # --------------------------------------------------------------------------- #
 
 
-@router.callback_query(DealCB.filter(F.action == "list"))
-async def deals_menu(call: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    await call.message.edit_text(
+async def render_deals_menu(event: Event) -> None:
+    await show(
+        event,
         "🤝 <b>Гарант-сделки</b>\n\n"
         "Покупатель оплачивает сделку — деньги хранятся у гаранта.\n"
         "Продавец получает их только после подтверждения покупателя.",
-        reply_markup=kb.deals_menu(),
+        kb.deals_menu(),
     )
-    await call.answer()
+
+
+@router.callback_query(DealCB.filter(F.action == "list"))
+async def deals_menu(call: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await render_deals_menu(call)
 
 
 @router.callback_query(DealCB.filter(F.action == "new"))

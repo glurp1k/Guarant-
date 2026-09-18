@@ -8,12 +8,16 @@ from __future__ import annotations
 
 from aiogram import Router
 
-from bot.handlers import check, common, deals, deposit, fallback, topup, withdraw
+from bot.handlers import (check, common, deals, deposit, fallback, reply_menu,
+                          topup, withdraw)
 from bot.handlers.admin import router as admin_router
 
 
 def build_router() -> Router:
     router = Router(name="root")
+    # Нижняя клавиатура видна всегда, поэтому её кнопки должны уводить
+    # из любого диалога — включаем этот роутер раньше всех остальных.
+    router.include_router(reply_menu.router)
     router.include_router(admin_router)
     router.include_router(common.router)
     router.include_router(topup.router)

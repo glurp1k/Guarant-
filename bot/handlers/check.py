@@ -18,6 +18,7 @@ from bot.keyboards.callbacks import MenuCB
 from bot.services import deposits, users as users_service
 from bot.services.settings import settings
 from bot.states import CheckSG
+from bot.utils.render import Event, deny, show
 from bot.utils.texts import esc, normalize_username
 
 router = Router(name="check")
@@ -53,15 +54,18 @@ async def _reply_card(message: Message, session: AsyncSession, raw: str) -> None
     await message.answer(deposits.build_card(target), reply_markup=kb.back_only())
 
 
-@router.callback_query(MenuCB.filter(F.action == "check"))
-async def ask_username(call: CallbackQuery, state: FSMContext) -> None:
+async def render_check_prompt(event: Event, state: FSMContext) -> None:
     if not settings.get_bool("check_enabled"):
-        await call.answer("Проверка сейчас отключена", show_alert=True)
+        await deny(event, "Проверка сейчас отключена")
         return
 
     await state.set_state(CheckSG.username)
-    await call.message.edit_text(PROMPT, reply_markup=kb.back_only())
-    await call.answer()
+    await show(event, PROMPT, kb.back_only())
+
+
+@router.callback_query(MenuCB.filter(F.action == "check"))
+async def ask_username(call: CallbackQuery, state: FSMContext) -> None:
+    await render_check_prompt(call, state)
 
 
 @router.message(CheckSG.username)

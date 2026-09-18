@@ -15,6 +15,7 @@ from bot.services.deposits import DepositError
 from bot.services.settings import settings
 from bot.states import DepositSG
 from bot.utils.money import ZERO, fmt, parse_amount
+from bot.utils.render import Event, deny, show
 from bot.utils.texts import fmt_date
 
 router = Router(name="deposit")
@@ -48,12 +49,11 @@ def deposit_text(user: User) -> str:
     return "\n".join(lines)
 
 
-async def render_deposit_menu(call: CallbackQuery, user: User) -> None:
+async def render_deposit_menu(event: Event, user: User) -> None:
     if not settings.get_bool("deposit_enabled"):
-        await call.answer("Страховой депозит сейчас отключён", show_alert=True)
+        await deny(event, "Страховой депозит сейчас отключён")
         return
-    await call.message.edit_text(deposit_text(user), reply_markup=kb.deposit_menu(user.deposit > ZERO))
-    await call.answer()
+    await show(event, deposit_text(user), kb.deposit_menu(user.deposit > ZERO))
 
 
 @router.callback_query(DepositCB.filter(F.action == "menu"))

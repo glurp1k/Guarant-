@@ -19,6 +19,7 @@ from bot.keyboards.callbacks import AdminCB, MenuCB
 from bot.services import payments
 from bot.services.settings import settings
 from bot.utils.money import fmt
+from bot.utils.render import Event, show
 
 log = logging.getLogger(__name__)
 router = Router(name="admin-menu")
@@ -26,18 +27,20 @@ router = Router(name="admin-menu")
 HEADER = "⚙️ <b>Панель администратора</b>\n\nВсе параметры бота меняются здесь и применяются сразу."
 
 
+async def render_admin_menu(event: Event, state: FSMContext) -> None:
+    await state.clear()
+    await show(event, HEADER, akb.admin_main())
+
+
 @router.message(Command("admin"))
 async def admin_command(message: Message, state: FSMContext) -> None:
-    await state.clear()
-    await message.answer(HEADER, reply_markup=akb.admin_main())
+    await render_admin_menu(message, state)
 
 
 @router.callback_query(MenuCB.filter(F.action == "admin"))
 @router.callback_query(AdminCB.filter(F.action == "menu"))
 async def admin_menu(call: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    await call.message.edit_text(HEADER, reply_markup=akb.admin_main())
-    await call.answer()
+    await render_admin_menu(call, state)
 
 
 async def _sum(session: AsyncSession, column) -> object:
