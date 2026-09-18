@@ -213,6 +213,46 @@ async def check_presentation() -> None:
         await settings.set(s, "currency_comma", "1")
 
 
+async def check_button_icons(ReplyButton, DEAL, button_text, main_keyboard, strip_markup_icons) -> None:
+    """Иконка кнопки: обычное эмодзи уходит в подпись, премиум — отдельным полем.
+
+    Премиум-эмодзи на кнопках появилось в Bot API 9.4 (icon_custom_emoji_id),
+    поэтому проект требует aiogram не ниже 3.31.
+    """
+    from datetime import datetime, timezone
+
+    from aiogram.types import Chat, Message
+
+    premium = '<tg-emoji emoji-id="5215347090674192358">🤝</tg-emoji>'
+
+    async def pressed(text: str) -> bool:
+        message = Message(message_id=1, date=datetime.now(timezone.utc),
+                          chat=Chat(id=1, type="private"), text=text)
+        return await ReplyButton(DEAL)(message)
+
+    async with session_scope() as s:
+        assert button_text(DEAL) == "🤝 Начать сделку", button_text(DEAL)
+        assert await pressed("🤝 Начать сделку")
+
+        await settings.set(s, "btn_deal_icon", premium)
+        await settings.set(s, "btn_deal_style", "success")
+
+        button = main_keyboard().keyboard[0][0]
+        assert button.text == "Начать сделку", button.text
+        assert button.icon_custom_emoji_id == "5215347090674192358", button.icon_custom_emoji_id
+        assert button.style == "success", button.style
+        # Подпись меняется вместе с иконкой — фильтр обязан это учитывать.
+        assert await pressed("Начать сделку")
+        ok("премиум-эмодзи становится иконкой кнопки, подпись остаётся чистой")
+
+        stripped = strip_markup_icons(main_keyboard()).keyboard[0][0]
+        assert stripped.icon_custom_emoji_id is None and stripped.text == "Начать сделку"
+        ok("при отказе Telegram иконка снимается, кнопка остаётся рабочей")
+
+        await settings.set(s, "btn_deal_icon", "🤝")
+        await settings.set(s, "btn_deal_style", "")
+
+
 async def main() -> int:
     await init_db()
 
@@ -230,12 +270,16 @@ async def main() -> int:
 
     await check_presentation()
 
-    from bot.keyboards.reply import main_keyboard
+    from bot.filters_reply import ReplyButton
+    from bot.keyboards.reply import DEAL, button_text, main_keyboard
+    from bot.utils.render import strip_markup_icons
 
     rows = [[b.text for b in row] for row in main_keyboard(is_admin=True).keyboard]
     assert [len(row) for row in rows] == [1, 2, 2, 1, 1], rows
     assert all(text.strip() for row in rows for text in row), rows
     ok(f"нижняя клавиатура: раскладка {[len(r) for r in rows]}")
+
+    await check_button_icons(ReplyButton, DEAL, button_text, main_keyboard, strip_markup_icons)
 
     await close_db()
     TMP_DB.unlink(missing_ok=True)

@@ -147,16 +147,47 @@ DEFINITIONS: tuple[SettingDef, ...] = (
     SettingDef("icon_deal", "🤝", "emoji", "Иконка: Сделка", "icons"),
 
     # ---------------------------- Кнопки меню ------------------------------ #
-    # Подписи нижней клавиатуры. Порядок строк фиксированный:
-    # широкая «сделка», пара, пара, широкая «проекты».
-    SettingDef("btn_deal", "🤝 Начать сделку", "str", "Кнопка: начать сделку", "menu"),
-    SettingDef("btn_deposit", "🛡 Депозит", "str", "Кнопка: депозит", "menu"),
-    SettingDef("btn_check", "🔍 Проверить", "str", "Кнопка: проверка по юзернейму", "menu"),
-    SettingDef("btn_profile", "👤 Профиль", "str", "Кнопка: профиль", "menu"),
-    SettingDef("btn_info", "ℹ️ Информация", "str", "Кнопка: информация", "menu"),
-    SettingDef("btn_projects", "✨ Наши проекты", "str", "Кнопка: наши проекты", "menu",
-               "Пусто — кнопка скрывается"),
-    SettingDef("btn_admin", "⚙️ Админка", "str", "Кнопка: админка", "menu", "Видна только администраторам"),
+    # На каждую кнопку три параметра: подпись, иконка и цвет.
+    # Иконка — обычное эмодзи или премиум: пришлите премиум-эмодзи сообщением,
+    # бот возьмёт из него id и повесит на кнопку через icon_custom_emoji_id
+    # (Bot API 9.4). Обычное эмодзи просто встаёт в начало подписи.
+    # Пустая подпись прячет кнопку.
+
+    SettingDef("btn_deal", "Начать сделку", "str", "Кнопка: сделка", "menu"),
+    SettingDef("btn_deal_icon", "🤝", "emoji", "Иконка: сделка", "menu",
+               "Можно прислать премиум-эмодзи"),
+    SettingDef("btn_deal_style", "", "str", "Цвет: сделка", "menu",
+               "Пусто — обычная", ("", "primary", "success", "danger", "link")),
+    SettingDef("btn_deposit", "Депозит", "str", "Кнопка: депозит", "menu"),
+    SettingDef("btn_deposit_icon", "🛡", "emoji", "Иконка: депозит", "menu",
+               "Можно прислать премиум-эмодзи"),
+    SettingDef("btn_deposit_style", "", "str", "Цвет: депозит", "menu",
+               "Пусто — обычная", ("", "primary", "success", "danger", "link")),
+    SettingDef("btn_check", "Проверить", "str", "Кнопка: проверка", "menu"),
+    SettingDef("btn_check_icon", "🔍", "emoji", "Иконка: проверка", "menu",
+               "Можно прислать премиум-эмодзи"),
+    SettingDef("btn_check_style", "", "str", "Цвет: проверка", "menu",
+               "Пусто — обычная", ("", "primary", "success", "danger", "link")),
+    SettingDef("btn_profile", "Профиль", "str", "Кнопка: профиль", "menu"),
+    SettingDef("btn_profile_icon", "👤", "emoji", "Иконка: профиль", "menu",
+               "Можно прислать премиум-эмодзи"),
+    SettingDef("btn_profile_style", "", "str", "Цвет: профиль", "menu",
+               "Пусто — обычная", ("", "primary", "success", "danger", "link")),
+    SettingDef("btn_info", "Информация", "str", "Кнопка: информация", "menu"),
+    SettingDef("btn_info_icon", "ℹ️", "emoji", "Иконка: информация", "menu",
+               "Можно прислать премиум-эмодзи"),
+    SettingDef("btn_info_style", "", "str", "Цвет: информация", "menu",
+               "Пусто — обычная", ("", "primary", "success", "danger", "link")),
+    SettingDef("btn_projects", "Наши проекты", "str", "Кнопка: наши проекты", "menu", "Пусто — кнопка скрыта"),
+    SettingDef("btn_projects_icon", "✨", "emoji", "Иконка: наши проекты", "menu",
+               "Можно прислать премиум-эмодзи"),
+    SettingDef("btn_projects_style", "", "str", "Цвет: наши проекты", "menu",
+               "Пусто — обычная", ("", "primary", "success", "danger", "link")),
+    SettingDef("btn_admin", "Админка", "str", "Кнопка: админка", "menu", "Видна только администраторам"),
+    SettingDef("btn_admin_icon", "⚙️", "emoji", "Иконка: админка", "menu",
+               "Можно прислать премиум-эмодзи"),
+    SettingDef("btn_admin_style", "", "str", "Цвет: админка", "menu",
+               "Пусто — обычная", ("", "primary", "success", "danger", "link")),
 
     # -------------------------------- Тексты ------------------------------- #
     SettingDef(

@@ -18,7 +18,7 @@ from bot.services import deals as deals_service
 from bot.services import deposits, ledger
 from bot.services.settings import settings
 from bot.utils.money import fmt
-from bot.utils.render import Event, show
+from bot.utils.render import Event, reply, show
 from bot.utils.style import block, bold, mono, note, section, title
 from bot.utils.texts import esc, fmt_date
 
@@ -132,7 +132,7 @@ async def render_history(event: Event, session: AsyncSession, user: User) -> Non
 
 async def greet(message: Message, user: User) -> None:
     """Приветствие вместе с постоянной клавиатурой внизу экрана."""
-    await message.answer(greeting(user), reply_markup=rkb.main_keyboard(user.is_admin))
+    await reply(message, greeting(user), rkb.main_keyboard(user.is_admin))
 
 
 @router.message(CommandStart(deep_link=True))

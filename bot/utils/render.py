@@ -1,66 +1,94 @@
 """Показ экрана из любого источника.
 
 Один и тот же раздел открывается двумя путями: нажатием инлайн-кнопки
-(тогда правим текущее сообщение) и нажатием кнопки на реплай-клавиатуре
+(тогда правим текущее сообщение) и нажатием кнопки на нижней клавиатуре
 (тогда шлём новое). Чтобы не дублировать каждый экран, хендлеры зовут
 `show()` и не думают, откуда пришёл пользователь.
+
+Здесь же страховка на премиум-эмодзи: отправлять их может не каждый бот,
+а отказ Telegram кладёт всё сообщение целиком. Поэтому при таком отказе
+текст и клавиатура переотправляются без премиум-эмодзи.
 """
 
 from __future__ import annotations
 
 import logging
-import re
+from typing import Any, Awaitable, Callable
 
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message, ReplyKeyboardMarkup
+
+from bot.utils.style import strip_custom_emoji
 
 log = logging.getLogger(__name__)
 
 Event = Message | CallbackQuery
-
-CUSTOM_EMOJI_TAG = re.compile(r"<tg-emoji[^>]*>(.*?)</tg-emoji>", re.DOTALL | re.IGNORECASE)
-
-
-def strip_custom_emoji(text: str) -> str:
-    """Заменить премиум-эмодзи на обычное, которое лежит внутри тега."""
-    return CUSTOM_EMOJI_TAG.sub(r"\1", text)
+Markup = InlineKeyboardMarkup | ReplyKeyboardMarkup | None
 
 
-def _is_emoji_error(exc: TelegramBadRequest) -> bool:
+def strip_markup_icons(markup: Markup) -> Markup:
+    """Снять премиум-иконки с кнопок, оставив подписи как есть."""
+    if isinstance(markup, InlineKeyboardMarkup):
+        rows = markup.inline_keyboard
+    elif isinstance(markup, ReplyKeyboardMarkup):
+        rows = markup.keyboard
+    else:
+        return markup
+
+    if not any(getattr(button, "icon_custom_emoji_id", None) for row in rows for button in row):
+        return markup
+
+    cleaned = [
+        [
+            button.model_copy(update={"icon_custom_emoji_id": None})
+            if getattr(button, "icon_custom_emoji_id", None)
+            else button
+            for button in row
+        ]
+        for row in rows
+    ]
+
+    if isinstance(markup, InlineKeyboardMarkup):
+        return markup.model_copy(update={"inline_keyboard": cleaned})
+    return markup.model_copy(update={"keyboard": cleaned})
+
+
+def _mentions_emoji(exc: TelegramBadRequest) -> bool:
     """Telegram отказал из-за премиум-эмодзи.
 
-    Отправлять <tg-emoji> может только бот с юзернеймом, купленным на
-    Fragment. Если админ вставил премиум-эмодзи в иконку раздела, а права
-    нет, отклоняется всё сообщение — и экран перестаёт открываться.
+    Слать премиум-эмодзи — и в тексте, и иконкой на кнопке — может не
+    каждый бот. Отказ прилетает на всё сообщение, поэтому ловим его и
+    повторяем без премиум-эмодзи, чтобы экран открылся хоть как-то.
     """
     return "emoji" in str(exc).lower()
 
 
-async def _send(coro_factory, text: str):
-    """Отправить, а при отказе из-за эмодзи — повторить без премиум-эмодзи."""
+async def _send(
+    call: Callable[[str, Markup], Awaitable[Any]],
+    text: str,
+    markup: Markup,
+) -> Any:
     try:
-        return await coro_factory(text)
+        return await call(text, markup)
     except TelegramBadRequest as exc:
-        if not _is_emoji_error(exc):
+        if not _mentions_emoji(exc):
             raise
-        fallback = strip_custom_emoji(text)
-        if fallback == text:
+        plain_text = strip_custom_emoji(text)
+        plain_markup = strip_markup_icons(markup)
+        if plain_text == text and plain_markup is markup:
             raise
         log.warning("Премиум-эмодзи отклонено Telegram, отправляю без него: %s", exc)
-        return await coro_factory(fallback)
+        return await call(plain_text, plain_markup)
 
 
-async def show(
-    event: Event,
-    text: str,
-    markup: InlineKeyboardMarkup | None = None,
-    *,
-    toast: str | None = None,
-) -> None:
+async def show(event: Event, text: str, markup: Markup = None, *, toast: str | None = None) -> None:
     """Открыть экран: правкой сообщения или новым — смотря откуда пришли."""
     if isinstance(event, CallbackQuery):
         try:
-            await _send(lambda body: event.message.edit_text(body, reply_markup=markup), text)
+            await _send(
+                lambda body, kb: event.message.edit_text(body, reply_markup=kb),
+                text, markup,
+            )
         except TelegramBadRequest as exc:
             # Повторное нажатие той же кнопки — Telegram отвечает
             # «message is not modified». Это не ошибка, экран уже открыт.
@@ -69,10 +97,10 @@ async def show(
         await event.answer(toast or "")
         return
 
-    await _send(lambda body: event.answer(body, reply_markup=markup), text)
+    await _send(lambda body, kb: event.answer(body, reply_markup=kb), text, markup)
 
 
-async def reply(event: Event, text: str, markup: InlineKeyboardMarkup | None = None) -> None:
+async def reply(event: Event, text: str, markup: Markup = None) -> None:
     """Прислать новое сообщение независимо от источника.
 
     Нужно там, где ответ дополняет экран, а не заменяет его: карточка
@@ -81,12 +109,7 @@ async def reply(event: Event, text: str, markup: InlineKeyboardMarkup | None = N
     target = event.message if isinstance(event, CallbackQuery) else event
     if isinstance(event, CallbackQuery):
         await event.answer()
-    await _send(lambda body: target.answer(body, reply_markup=markup), text)
-
-
-def actor(event: Event) -> Message:
-    """Сообщение, рядом с которым отвечаем."""
-    return event.message if isinstance(event, CallbackQuery) else event
+    await _send(lambda body, kb: target.answer(body, reply_markup=kb), text, markup)
 
 
 async def deny(event: Event, text: str) -> None:
@@ -95,3 +118,8 @@ async def deny(event: Event, text: str) -> None:
         await event.answer(text[:200], show_alert=True)
         return
     await event.answer(text)
+
+
+def actor(event: Event) -> Message:
+    """Сообщение, рядом с которым отвечаем."""
+    return event.message if isinstance(event, CallbackQuery) else event

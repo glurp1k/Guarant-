@@ -13,10 +13,34 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 BRANCH = "├"
 LAST = "╰"
+
+# Админ присылает премиум-эмодзи сообщением, мы храним его HTML-тегом.
+# Из тега достаём и сам символ (для текста), и id (для иконки на кнопке).
+CUSTOM_EMOJI_TAG = re.compile(
+    r'<tg-emoji\s+emoji-id="(?P<id>\d+)"\s*>(?P<fallback>.*?)</tg-emoji>',
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def custom_emoji_id(value: str) -> str | None:
+    """id премиум-эмодзи, если в значении лежит <tg-emoji>."""
+    match = CUSTOM_EMOJI_TAG.search(value or "")
+    return match.group("id") if match else None
+
+
+def strip_custom_emoji(value: str) -> str:
+    """Заменить премиум-эмодзи на обычное, которое лежит внутри тега."""
+    return CUSTOM_EMOJI_TAG.sub(lambda m: m.group("fallback"), value or "")
+
+
+def plain_emoji(value: str) -> str:
+    """Только символ, без тега и без лишних пробелов."""
+    return strip_custom_emoji(value).strip()
 
 
 def mono(value: object) -> str:

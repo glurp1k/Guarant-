@@ -9,7 +9,7 @@ from __future__ import annotations
 from aiogram.filters import BaseFilter
 from aiogram.types import Message
 
-from bot.keyboards.reply import label
+from bot.keyboards.reply import button_text
 
 
 class ReplyButton(BaseFilter):
@@ -17,5 +17,5 @@ class ReplyButton(BaseFilter):
         self.key = key
 
     async def __call__(self, message: Message) -> bool:  # noqa: D102
-        current = label(self.key)
+        current = button_text(self.key)
         return bool(current) and (message.text or "").strip() == current
